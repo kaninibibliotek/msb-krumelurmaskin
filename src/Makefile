@@ -6,11 +6,13 @@ CFLAGS=-g -Wno-deprecated-declarations
 
 FRAMEWORKS=\
 	-framework Cocoa \
-	-framework WebKit \
+	-framework Python \
 	-framework QuartzCore
 
 SOURCES=\
 	main.m \
+	NSString+Py.m \
+	Runtime.m \
 	Application.m
 
 OBJECTS=$(SOURCES:.m=.o)

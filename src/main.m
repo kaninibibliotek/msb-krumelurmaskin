@@ -4,9 +4,9 @@
 int main(int argc, const char * argv[]) {
   NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
   NSApplication *app = [NSApplication sharedApplication];
-  Application *magnanimous = [[[Application alloc] init] autorelease];
+  Application *delegate = [[[Application alloc] init] autorelease];
 
-  app.delegate = magnanimous;
+  app.delegate = delegate;
 
   [app run];
 

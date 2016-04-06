@@ -10,6 +10,7 @@
 
 - (id) init {
   if (self = [super init]) {
+    runtime=nil;
   }
   return self;
 }
@@ -30,6 +31,8 @@
   NSApplication *app = [NSApplication sharedApplication];
 
   [defaults synchronize];
+
+  runtime = [[Runtime alloc] init];
   
   window = [[NSWindow alloc] initWithContentRect:frame
             styleMask: NSTitledWindowMask|NSClosableWindowMask|NSMiniaturizableWindowMask|NSResizableWindowMask
@@ -76,14 +79,16 @@
   NSApplication *app = [NSApplication sharedApplication];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   [defaults synchronize];
+  [runtime run:@"main"];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
-
+  [runtime shutdown];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
   return YES;
 }
+
 
 @end
