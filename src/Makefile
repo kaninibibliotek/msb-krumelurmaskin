@@ -9,7 +9,8 @@ FRAMEWORKS=\
 	-framework Python \
 	-framework QuartzCore \
 	-framework AVFoundation \
-	-framework CoreMedia
+	-framework CoreMedia \
+	-framework ImageCaptureCore
 
 SOURCES=\
 	main.m \
@@ -17,6 +18,7 @@ SOURCES=\
 	Runtime.m \
 	VideoView.m \
 	PreView.m \
+	PTPCamera.m \
 	Application.m
 
 OBJECTS=$(SOURCES:.m=.o)

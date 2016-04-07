@@ -7,13 +7,14 @@
 @end
 
 @implementation Application
-@synthesize window, videoView, preview;
+@synthesize window, videoView, preview, camera;
 
 - (id) init {
   if (self = [super init]) {
     window = nil;
     videoView = nil;
     preview = nil;
+    camera = nil;
   }
   return self;
 }
@@ -23,6 +24,10 @@
 -(void)togglePreview:(id)sender {
   if ([preview running]) [preview stop];
   else [preview start];
+}
+
+-(void)captureImage:(id)sender {
+  
 }
 
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
@@ -48,6 +53,10 @@
   window.title = @"Krumeluren";
   window.delegate = self;
 
+  camera = [[PTPCamera alloc] init];
+  camera.target = @"D3200";
+  camera.delegate = self;
+  
   NSMenuItem *mi;
   NSMenu *ms=nil, *mb = [[[NSMenu alloc] init] autorelease];
 
@@ -70,7 +79,8 @@
 
   mi = [mb addItemWithTitle:@"File" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
-  [ms addItemWithTitle:@"Preview" action:@selector(togglePreview:) keyEquivalent:@"P"];
+  [ms addItemWithTitle:@"Preview" action:@selector(togglePreview:) keyEquivalent:@"p"];
+  [ms addItemWithTitle:@"Capture" action:@selector(captureImage:) keyEquivalent:@"c"];
   [mb setSubmenu:ms forItem:mi];
   
   mi = [mb addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
@@ -79,8 +89,9 @@
 
   [app setMainMenu:mb];
 
-  preview = [[[PreView alloc] initWithFrame:frame] autorelease];
-
+  preview = [[PreView alloc] initWithFrame:frame];
+  preview.delegate = self;
+  
   preview.target = @"Trust Webcam";
     
   window.contentView = preview;
@@ -95,15 +106,35 @@
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   [defaults synchronize];
   [[Runtime sharedRuntime] run:@"main"];
+  [preview connect];
+  [camera connect];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
+  if ([preview running])
+    [preview stop];
+  [preview shutdown];
+  [camera shutdown];
+  self.preview = nil;
+  self.camera = nil;
   [[Runtime sharedRuntime] shutdown];
+  [window release];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
   return YES;
 }
 
+-(void)usbDeviceFound:(BOOL)found {
+  NSLog(@"USB Video camera found: %d\n", found);
+}
+
+-(void)ptpCameraFound:(BOOL)found {
+  NSLog(@"SLR usb camera found: %d\n", found);
+}
+
+-(void)ptpCameraReady {
+  NSLog(@"SLR camera ready\n");
+}
 
 @end

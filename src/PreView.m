@@ -1,10 +1,12 @@
 #import "PreView.h"
 
 @implementation PreView
-@synthesize target;
+@synthesize target, device, delegate;
 -(id)initWithFrame:(NSRect)frame {
   if (self = [super initWithFrame:frame]) {
     captureSession = nil;
+    device =nil;
+    delegate=nil;
     savedLayer = nil;
     target = nil;
     self.wantsLayer = YES;
@@ -12,9 +14,32 @@
   return self;
 }
 
+-(void)shutdown {
+  NSLog(@"Detaching %@\n", target);
+  if (device) {
+    [device release];
+  }
+  device = nil;
+}
+
+-(void)connect {
+  if (device) {
+    [self stop];
+  }
+  device = nil;
+  for (AVCaptureDevice* cam in AVCaptureDevice.devices) {
+    if ([target isEqualToString:cam.localizedName] && [cam hasMediaType:AVMediaTypeVideo]) {
+      device = [cam retain];
+      break ;
+    }
+  }
+  if (!device)
+    NSLog(@"Target device not found or does not support video\n");
+  if (delegate) [delegate usbDeviceFound:(device) ? YES : NO];
+}
+
 -(void)start {
   NSError *err=nil;
-  AVCaptureDevice *device;
   AVCaptureDeviceInput *input;
   AVCaptureSession *s;
   AVCaptureVideoPreviewLayer* layer;
@@ -30,16 +55,12 @@
   ];
   
   if (captureSession) [self stop];
-  for (AVCaptureDevice* cam in AVCaptureDevice.devices) {
-    if ([target isEqualToString:cam.localizedName] && [cam hasMediaType:AVMediaTypeVideo]) {
-      device = [cam retain];
-      break ;
-    }
-  }
+
   if (!device) {
-    NSLog(@"Target device not found or does not support video\n");
+    NSLog(@"Unable to start, no device connected\n");
     return ;
   }
+  
   s = [[AVCaptureSession alloc] init];
   input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&err];
   if (err) {
