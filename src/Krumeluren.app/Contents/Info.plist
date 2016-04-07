@@ -28,5 +28,22 @@
         <string>Copyright © 2016 Unsworn Industries AB. All rights reserved.</string>
         <key>NSPrincipalClass</key>
         <string>NSApplication</string>
+
+        <key>WindowTitle</key>
+        <string>Krumeluren-Huren</string>
+        
+        <key>USBCameraDeviceName</key>
+        <string>Trust Webcam</string>
+
+        <key>PTPCameraDeviceName</key>
+        <string>D3200</string>
+
+        <key>RuntimeSettings</key>
+        <dict>
+          <key>module</key>
+          <string>main</string>
+        </dict>
+
+
 </dict>
 </plist>

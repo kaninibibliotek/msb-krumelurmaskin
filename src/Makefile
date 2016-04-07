@@ -10,7 +10,8 @@ FRAMEWORKS=\
 	-framework QuartzCore \
 	-framework AVFoundation \
 	-framework CoreMedia \
-	-framework ImageCaptureCore
+	-framework ImageCaptureCore \
+	-framework Quartz
 
 SOURCES=\
 	main.m \

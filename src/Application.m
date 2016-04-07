@@ -42,7 +42,8 @@
   NSBundle *bundle = [NSBundle mainBundle];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   NSApplication *app = [NSApplication sharedApplication];
-
+  id val, info;
+  
   [defaults synchronize];
 
   window = [[NSWindow alloc] initWithContentRect:frame
@@ -50,13 +51,27 @@
             backing: NSBackingStoreBuffered
             defer:NO];
 
+  info = bundle.infoDictionary;
+  
   window.title = @"Krumeluren";
+  if ((val = [info objectForKey:@"WindowTitle"]))
+    window.title = val;
   window.delegate = self;
 
   camera = [[PTPCamera alloc] init];
-  camera.target = @"D3200";
+  camera.target = @"None";
+  if ((val = [info objectForKey:@"PTPCameraDeviceName"]))
+    camera.target = val;
   camera.delegate = self;
-  
+
+  preview = [[PreView alloc] initWithFrame:frame];
+  preview.target = @"None";
+  if ((val = [info objectForKey:@"USBCameraDeviceName"]))
+    preview.target = val;
+  preview.delegate = self;
+
+  view = [[[NSView alloc] initWithFrame:frame] autorelease];
+    
   NSMenuItem *mi;
   NSMenu *ms=nil, *mb = [[[NSMenu alloc] init] autorelease];
 
@@ -88,22 +103,29 @@
   [mb setSubmenu:ms forItem:mi];
 
   [app setMainMenu:mb];
-
-  preview = [[PreView alloc] initWithFrame:frame];
-  preview.delegate = self;
-  
-  preview.target = @"Trust Webcam";
     
-  window.contentView = preview;
+  window.contentView = view;
 
   [window makeKeyAndOrderFront:nil];
 
   [window center];
+
+  intro = [[QCView alloc] initWithFrame:frame];
+  intro.autoresizesSubviews = YES;
+  intro.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
+
+  [intro loadCompositionFromFile:[bundle pathForResource:@"intro" ofType:@"qtz"]];
+  intro.eraseColor = [NSColor whiteColor];
+  [view addSubview:intro];
+
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   NSApplication *app = [NSApplication sharedApplication];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSBundle *bundle = [NSBundle mainBundle];
+  [intro startRendering];
+
   [defaults synchronize];
   [[Runtime sharedRuntime] run:@"main"];
   [preview connect];
@@ -111,6 +133,12 @@
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
+  if (intro) {
+    [intro unloadComposition];
+    [intro removeFromSuperview];
+    [intro release];
+  }
+  intro = nil;
   if ([preview running])
     [preview stop];
   [preview shutdown];

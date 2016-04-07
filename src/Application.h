@@ -1,16 +1,20 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <Quartz/Quartz.h>
 #import "VideoView.h"
 #import "PreView.h"
 #import "PTPCamera.h"
 
+
 #define app_ ((Application*)[NSApplication sharedApplication].delegate)
 
 @interface Application : NSObject <NSApplicationDelegate, NSWindowDelegate, PreViewDelegate, PTPCameraDelegate> {
-  NSWindow  *window;
-  VideoView *videoView;
-  PreView   *preview;
-  PTPCamera *camera;
+  NSWindow     *window;
+  VideoView    *videoView;
+  PreView      *preview;
+  PTPCamera    *camera;
+  QCView       *intro;
+  NSView       *view;
 }
 
 @property (nonatomic, retain) NSWindow  *window;
