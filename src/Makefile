@@ -16,6 +16,7 @@ SOURCES=\
 	NSString+Py.m \
 	Runtime.m \
 	VideoView.m \
+	PreView.m \
 	Application.m
 
 OBJECTS=$(SOURCES:.m=.o)

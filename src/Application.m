@@ -7,17 +7,23 @@
 @end
 
 @implementation Application
-@synthesize window, videoView;
+@synthesize window, videoView, preview;
 
 - (id) init {
   if (self = [super init]) {
     window = nil;
     videoView = nil;
+    preview = nil;
   }
   return self;
 }
 
 #pragma mark - Menu actions..
+
+-(void)togglePreview:(id)sender {
+  if ([preview running]) [preview stop];
+  else [preview start];
+}
 
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
   return YES;
@@ -62,13 +68,22 @@
   [ms addItemWithTitle:@"Quit Krumeluren" action:@selector(terminate:) keyEquivalent:@"q"];
   [mb setSubmenu:ms forItem:mi];
 
+  mi = [mb addItemWithTitle:@"File" action:nil keyEquivalent:@""];
+  ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
+  [ms addItemWithTitle:@"Preview" action:@selector(togglePreview:) keyEquivalent:@"P"];
+  [mb setSubmenu:ms forItem:mi];
+  
   mi = [mb addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
   [mb setSubmenu:ms forItem:mi];
 
   [app setMainMenu:mb];
 
-  //window.contentView = view;
+  preview = [[[PreView alloc] initWithFrame:frame] autorelease];
+
+  preview.target = @"Trust Webcam";
+    
+  window.contentView = preview;
 
   [window makeKeyAndOrderFront:nil];
 
