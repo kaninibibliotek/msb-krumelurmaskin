@@ -7,11 +7,16 @@
 #import "NSString+Py.h"
 
 @interface Runtime : NSObject {
+  PyThreadState *state;
 }
 
--(id)init;
++(Runtime*)sharedRuntime;
 -(BOOL)run:(NSString*)m;
 -(void)shutdown;
+-(BOOL)callable:(PyObject*)obj symbol:(NSString*)name;
+-(PyObject*)call:(PyObject*)obj symbol:(NSString*)name arguments:(PyObject*)args;
+-(BOOL)voidcall:(PyObject*)obj symbol:(NSString*)name arguments:(PyObject*)args;
+-(void)register:(NSString*)module interface:(PyMethodDef*)def;
 
 @end
 

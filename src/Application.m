@@ -1,16 +1,18 @@
 #import <WebKit/WebKit.h>
 #import "Application.h"
+#import "Runtime.h"
 
 @interface Application ()
   
 @end
 
 @implementation Application
-@synthesize window;
+@synthesize window, videoView;
 
 - (id) init {
   if (self = [super init]) {
-    runtime=nil;
+    window = nil;
+    videoView = nil;
   }
   return self;
 }
@@ -32,8 +34,6 @@
 
   [defaults synchronize];
 
-  runtime = [[Runtime alloc] init];
-  
   window = [[NSWindow alloc] initWithContentRect:frame
             styleMask: NSTitledWindowMask|NSClosableWindowMask|NSMiniaturizableWindowMask|NSResizableWindowMask
             backing: NSBackingStoreBuffered
@@ -79,11 +79,11 @@
   NSApplication *app = [NSApplication sharedApplication];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   [defaults synchronize];
-  [runtime run:@"main"];
+  [[Runtime sharedRuntime] run:@"main"];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
-  [runtime shutdown];
+  [[Runtime sharedRuntime] shutdown];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {

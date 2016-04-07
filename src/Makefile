@@ -7,12 +7,15 @@ CFLAGS=-g -Wno-deprecated-declarations
 FRAMEWORKS=\
 	-framework Cocoa \
 	-framework Python \
-	-framework QuartzCore
+	-framework QuartzCore \
+	-framework AVFoundation \
+	-framework CoreMedia
 
 SOURCES=\
 	main.m \
 	NSString+Py.m \
 	Runtime.m \
+	VideoView.m \
 	Application.m
 
 OBJECTS=$(SOURCES:.m=.o)
