@@ -15,6 +15,7 @@
   PTPCamera    *camera;
   QCView       *intro;
   NSView       *view;
+  NSTimer      *timer;
 }
 
 @property (nonatomic, retain) NSWindow  *window;

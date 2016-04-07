@@ -21,7 +21,7 @@
     NSLog(@"PTPCamera is searching for devices right now\n");
     return ;
   }
-  deviceBrowser = [[[ICDeviceBrowser alloc] init] autorelease];
+  deviceBrowser = [[ICDeviceBrowser alloc] init];
   deviceBrowser.delegate = self;
   deviceBrowser.browsedDeviceTypeMask=ICDeviceLocationTypeMaskLocal|ICDeviceTypeMaskCamera;
   [deviceBrowser start];

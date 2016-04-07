@@ -3,7 +3,8 @@
 #import "Runtime.h"
 
 @interface Application ()
-  
+-(void)startServices;
+-(void)stopServices;
 @end
 
 @implementation Application
@@ -15,6 +16,7 @@
     videoView = nil;
     preview = nil;
     camera = nil;
+    timer = nil;
   }
   return self;
 }
@@ -42,6 +44,8 @@
   NSBundle *bundle = [NSBundle mainBundle];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   NSApplication *app = [NSApplication sharedApplication];
+  NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+
   id val, info;
   
   [defaults synchronize];
@@ -106,47 +110,61 @@
     
   window.contentView = view;
 
-  [window makeKeyAndOrderFront:nil];
-
-  [window center];
-
   intro = [[QCView alloc] initWithFrame:frame];
   intro.autoresizesSubviews = YES;
   intro.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
+  intro.autostartsRendering = YES;
+  intro.eraseColor = [NSColor whiteColor];
+
+  [nc addObserver:self 
+      selector:@selector(handleIntroBegan:) 
+      name:QCViewDidStartRenderingNotification
+      object:nil];
 
   [intro loadCompositionFromFile:[bundle pathForResource:@"intro" ofType:@"qtz"]];
-  intro.eraseColor = [NSColor whiteColor];
+  
   [view addSubview:intro];
 
+  [window makeKeyAndOrderFront:nil];
+
+  [window center];
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
-  NSApplication *app = [NSApplication sharedApplication];
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-  NSBundle *bundle = [NSBundle mainBundle];
-  [intro startRendering];
+  [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
+  timer = [NSTimer timerWithTimeInterval:15.0
+    target:self selector:@selector(handleIntroTimedOut:)
+    userInfo:nil repeats:NO];
+  [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
+}
 
-  [defaults synchronize];
+- (void)applicationWillTerminate:(NSNotification *)aNotification {
+  if (timer) {
+    [timer invalidate];
+    [self handleIntroTimedOut:nil];
+  }
+  
+  [self stopServices];
+
+  self.preview = nil;
+  self.camera = nil;
+  [window release];
+}
+
+-(void)startServices {
+  NSLog(@"Starting services\n");
   [[Runtime sharedRuntime] run:@"main"];
   [preview connect];
   [camera connect];
 }
 
-- (void)applicationWillTerminate:(NSNotification *)aNotification {
-  if (intro) {
-    [intro unloadComposition];
-    [intro removeFromSuperview];
-    [intro release];
-  }
-  intro = nil;
+-(void)stopServices {
+  NSLog(@"Stopping services\n");
   if ([preview running])
     [preview stop];
   [preview shutdown];
   [camera shutdown];
-  self.preview = nil;
-  self.camera = nil;
   [[Runtime sharedRuntime] shutdown];
-  [window release];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
@@ -163,6 +181,26 @@
 
 -(void)ptpCameraReady {
   NSLog(@"SLR camera ready\n");
+}
+
+-(void)handleIntroBegan:(NSNotification*)notification {
+  NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+  NSLog(@"Display ready\n");
+  [nc removeObserver:self name:QCViewDidStartRenderingNotification object:nil];
+  [self startServices];
+}
+
+-(void)handleIntroTimedOut:(NSTimer*)t {
+if (intro) { //TODO not here
+    [intro unloadComposition];
+    [intro removeFromSuperview];
+    [intro release];
+    NSLog(@"Leaving intromode\n");
+  }  
+  intro = nil;
+  timer = nil;
+  if (!t) return ;
+  NSLog(@"Could not initialize services\n");
 }
 
 @end
