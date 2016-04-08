@@ -24,8 +24,16 @@
 #pragma mark - Menu actions..
 
 -(void)togglePreview:(id)sender {
-  if ([preview running]) [preview stop];
-  else [preview start];
+  if ([preview running]) {
+    video.hidden=NO;
+    preview.hidden=YES;
+    [preview stop];
+  } else {
+    video.hidden=YES;
+    preview.hidden=NO;
+    [preview start];
+  }
+      
 }
 
 -(void)captureImage:(id)sender {
@@ -152,6 +160,11 @@
   [video addLoopAt:0 to:10.0];
 
   [view addSubview:video];
+  [view addSubview:preview];
+
+  video.hidden = YES;
+  preview.hidden = YES;
+  
   [view addSubview:intro];
 
   [window makeKeyAndOrderFront:nil];
@@ -230,6 +243,7 @@ if (intro) { //TODO not here
   intro = nil;
   timer = nil;
   [video play:1];
+  video.hidden=NO;
   if (!t) return ;
   NSLog(@"Could not initialize services\n");
 }
