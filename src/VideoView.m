@@ -10,10 +10,6 @@
 
 //------------------------------------------------------------------------------------------------------------
 
-void video_register_module();
-
-//------------------------------------------------------------------------------------------------------------
-
 static void* VideoViewPlayerRateContext       = &VideoViewPlayerRateContext;
 static void* VideoViewPlayerItemStatusContext = &VideoViewPlayerItemStatusContext;
 static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
@@ -29,18 +25,20 @@ static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
 - (id) initWithFrame:(NSRect)r
 {
   if (self = [super initWithFrame:r]) {
-
+    asset=nil;
     player=nil;
     playerlayer=nil;
     playeritem=nil;
-    
+    loops = [[NSMutableArray alloc] init];
     self.wantsLayer = YES;
     self.layer = [self makeBackingLayer];
 
     self.player = [[AVPlayer alloc] init];
-    self.layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
+    self.layer.backgroundColor = CGColorGetConstantColor(kCGColorWhite);
     self.player.muted  = NO;
     self.player.volume = 1.0;
+
+    self.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
 
     [self addObserver:self
      forKeyPath:@"player.rate"
@@ -53,42 +51,77 @@ static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
      context:VideoViewPlayerItemStatusContext];
 
   }
-
-  video_register_module();
-
   return self;
 }
 
 - (void) dealloc
 {
+  [loops release];
   if (self.playerlayer)
     [self closeMedia];
-  if (self.player)
-    [self.player release];
+  if (player)
+    [player release];
   [super dealloc];
 }
 
 - (BOOL) openMedia:(NSString*)mpath
 {
   NSError* err=nil;
+  
+  [loops removeAllObjects];
 
   NSURL* url = [NSURL fileURLWithPath:mpath isDirectory: NO];
   NSDictionary* options = [NSDictionary
                            dictionaryWithObject: [NSNumber numberWithBool:YES]
                            forKey: AVURLAssetPreferPreciseDurationAndTimingKey ];
-  AVURLAsset* asset = [AVURLAsset URLAssetWithURL:url options:options];
+  AVURLAsset* asset_ = [AVURLAsset URLAssetWithURL:url options:options];
   NSArray* testkeys = @[@"playable", @"hasProtectedContent", @"tracks"];
-  [asset loadValuesAsynchronouslyForKeys: testkeys completionHandler:^(void) {
+  [asset_ loadValuesAsynchronouslyForKeys: testkeys completionHandler:^(void) {
     dispatch_async(dispatch_get_main_queue(), ^(void) {
-      [self setup: asset forkeys:testkeys];
+      [self setup: asset_ forkeys:testkeys];
     });
   }];
   NSLog(@"VideoView: opened(%@)\n", mpath);
   return YES;
 }
 
+-(int)addLoopAt:(double)start to:(double)end {
+  [loops addObject:@[
+    [NSNumber numberWithDouble:start], 
+    [NSNumber numberWithDouble:end]]];
+  return [loops count] - 1;
+}
+
+- (void)play:(int)loopIndex {
+  if (!asset) {
+    NSLog(@"Can not play, no asset loaded\n");
+    return ;
+  }
+  
+  NSArray* loop = [loops objectAtIndex:loopIndex];
+  CMTimeRange range = CMTimeRangeMake(
+    CMTimeMakeWithSeconds(((NSNumber*)[loop objectAtIndex:0]).doubleValue, asset.duration.timescale),
+    CMTimeMakeWithSeconds(((NSNumber*)[loop objectAtIndex:1]).doubleValue, asset.duration.timescale));
+  CMTimeRangeShow(range);
+  AVMutableComposition *comp = [[[AVMutableComposition alloc] init] autorelease];
+  [comp insertTimeRange:range ofAsset:asset atTime:comp.duration error:nil];
+
+  playeritem = [AVPlayerItem playerItemWithAsset:comp];
+
+  [[NSNotificationCenter defaultCenter] addObserver:self
+    selector:@selector (videoPlayerItemDidReachEnd:)
+    name:AVPlayerItemDidPlayToEndTimeNotification
+    object:playeritem];
+
+  [player replaceCurrentItemWithPlayerItem:playeritem];
+  
+  [player play];
+}
+
 - (void) closeMedia
 {
+  if (asset) [asset release];
+
   AVPlayerLayer* tmp=self.playerlayer;
 
   [self.player pause];
@@ -132,26 +165,28 @@ static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
   return 0;
 }
 
-- (void) setup:(AVAsset*) asset forkeys:(NSArray*)keys
+- (void) setup:(AVAsset*) asset_ forkeys:(NSArray*)keys
 {
   NSArray* tracks=nil;
+  if (asset) [asset release];
+  asset=nil;
 
   for (NSString* key in keys) {
     NSError* err=nil;
-    if ([asset statusOfValueForKey:key error:&err] == AVKeyValueStatusFailed) {
+    if ([asset_ statusOfValueForKey:key error:&err] == AVKeyValueStatusFailed) {
       [self abort:err];
       NSLog(@"Video: setup failed - status for key: %@\n", key);
       return ;
     }
   }
 
-  if (![asset isPlayable]) {
+  if (![asset_ isPlayable]) {
     [self abort:nil];
     NSLog(@"Video: setup failed - source is not playable\n");
     return ;
   }
 
-  if ([[asset tracksWithMediaType:AVMediaTypeVideo] count] == 0) {
+  if ([[asset_ tracksWithMediaType:AVMediaTypeVideo] count] == 0) {
     [self abort:nil];
     NSLog(@"Video: setup failed - source does not contain a video track\n");
     return ;
@@ -177,29 +212,15 @@ static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
    options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
    context:VideoViewLayerReadyForDisplay];
 
-  playeritem = [AVPlayerItem playerItemWithAsset:asset];
+  asset = [asset_ retain];
 
-  [self.player replaceCurrentItemWithPlayerItem:playeritem];
-
-  NSLog(@"Video: setup completed.. continuing with audio setup\n");
-
-  tracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+  NSLog(@"All shook up\n");
 
 }
 
 - (void) abort:(NSError*) err
 {
   NSLog(@"Abort requested due to: %@\n", (err) ? [err localizedDescription] : @"Unknown Reason");
-}
-
-- (void) prerollAndPresent
-{
-  if (!self.player) return ;
-
-  [self.player prerollAtRate:1.0 completionHandler:^(BOOL done) {
-    if (!done) return ;
-    NSLog(@"Video primed and ready");
-  }];
 }
 
 - (void) observeValueForKeyPath:(NSString*)keyPath ofObject:(id)obj change:(NSDictionary*)change context:(void*)context
@@ -213,7 +234,7 @@ static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
     case AVPlayerItemStatusUnknown:
       break;
     case AVPlayerItemStatusReadyToPlay:
-      [self prerollAndPresent];
+      // success [self prerollAndPresent];
       break;
     case AVPlayerItemStatusFailed:
       [self abort:nil];
@@ -231,249 +252,12 @@ static void* VideoViewLayerReadyForDisplay    = &VideoViewLayerReadyForDisplay;
   }
 }
 
-- (BOOL) queryMedia:(NSString*)path query:(NSMutableDictionary*)query
-{
-  NSURL*        url   = [NSURL fileURLWithPath:path isDirectory: NO];
-  AVURLAsset*   asset = [AVURLAsset URLAssetWithURL:url options:nil];
-  BOOL          hasVideo = NO, hasAudio = NO;
-  NSArray*      videoTracks;
-  NSArray*      audioTracks;
-
-  NSLog(@"queryMedia(%@) started\n", path);
-
-  videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
-  audioTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
-
-  [query setObject:[NSNumber numberWithBool:asset.playable] forKey:@"playable"];
-  [query setObject:[NSNumber numberWithBool:asset.hasProtectedContent] forKey:@"protected"];
-
-  for (AVAssetTrack* track in videoTracks) {
-    if (!track.playable)
-      continue ;
-    [query setObject:[NSNumber numberWithDouble:track.nominalFrameRate] forKey:@"framerate"];
-    hasVideo = YES;
-    break ;
-  }
-
-  for (AVAssetTrack* track in audioTracks) {
-    if (!track.playable)
-      continue;
-    [query setObject:[NSNumber numberWithDouble:track.nominalFrameRate] forKey:@"samplerate"];
-    hasAudio = YES;
-    break;
-  }
-
-  [query setObject:[NSNumber numberWithDouble:CMTimeGetSeconds(asset.duration)] forKey:@"duration"];
-  [query setObject:[NSNumber numberWithBool:hasVideo] forKey:@"video"];
-  [query setObject:[NSNumber numberWithBool:hasAudio] forKey:@"audio"];
-
-  NSLog(@"queryMedia() done\n");
-
-  [asset cancelLoading];
-
-  return hasVideo;
+-(void)videoPlayerItemDidReachEnd:(NSNotification*)notification {
+  NSLog(@"We are at the loops end\n");
+  if (!playeritem) return ;
+  [playeritem seekToTime:kCMTimeZero];
+  [player play];
 }
 
 @end
 
-//------------------------------------------------------------------------------------------------------------
-
-#define _self ((Application*)[NSApplication sharedApplication].delegate).videoView
-
-PyObject*
-video_open_media(PyObject* self, PyObject* args)
-{
-  PyObject *path=0;
-  do {
-    if (!PyArg_ParseTuple(args, "O", &path))
-      break;
-    if (![_self openMedia:[NSString stringWithPyString:path]])
-      break;
-    Py_RETURN_TRUE;
-  } while (0);
-  Py_RETURN_FALSE;
-}
-
-PyObject*
-video_close_media(PyObject* self, PyObject* args)
-{
-  [_self closeMedia];
-  Py_RETURN_NONE;
-}
-
-PyObject*
-video_query_media(PyObject* self, PyObject* args)
-{
-  BOOL      result=NO;
-  PyObject* path;
-  PyObject* d = PyDict_New();
-  NSMutableDictionary* q = [NSMutableDictionary dictionary];
-  do {
-
-    if (!PyArg_ParseTuple(args, "O", &path))
-      break;
-
-    result = [_self queryMedia:[NSString stringWithPyString:path] query:q];
-
-    PyDict_SetItemString(d, "source", path);
-
-    for (NSString* key in [q allKeys]) {
-      PyDict_SetItem(d,
-                     Py_BuildValue("s", [key UTF8String]),
-                     Py_BuildValue("f", [((NSNumber*)[q objectForKey:key]) doubleValue]));
-
-    }
-
-  } while(0);
-
-  PyDict_SetItemString(d, "success", Py_BuildValue("i", result));
-
-  return d;
-}
-
-PyObject*
-video_media_loaded(PyObject* self, PyObject* args)
-{
-  do {
-    if (_self.playerlayer == nil)
-      break;
-    Py_RETURN_TRUE;
-  } while(0);
-  Py_RETURN_FALSE;
-}
-
-PyObject*
-video_media_ready(PyObject* self, PyObject* args)
-{
-  do {
-    if (_self.playerlayer == nil)
-      break;
-    if (_self.playerlayer.hidden)
-      break;
-    Py_RETURN_TRUE;
-  } while(0);
-  Py_RETURN_FALSE;
-}
-
-PyObject*
-video_seek_time(PyObject* self, PyObject* args)
-{
-  double seconds=0;
-  CFAbsoluteTime tb=0;
-  do {
-    if (!PyArg_ParseTuple(args, "d", &seconds))
-      break;
-    tb = CFAbsoluteTimeGetCurrent();
-    [_self.player
-     seekToTime:CMTimeMakeWithSeconds(seconds, VIDEO_SEEK_TIMESCALE)
-     toleranceBefore:kCMTimeZero
-     toleranceAfter:kCMTimeZero
-    completionHandler:^(BOOL done) {
-      if (!done) return ;
-      CFTimeInterval si = CFAbsoluteTimeGetCurrent() - tb;
-      NSLog(@"Seek completed! d:%f\n", si);
-    }];
-
-  } while(0);
-  Py_RETURN_NONE;
-}
-
-PyObject*
-video_tell_time(PyObject* self, PyObject* args)
-{
-  return Py_BuildValue("f", CMTimeGetSeconds( _self.player.currentTime ));
-}
-
-PyObject*
-video_seek_frame(PyObject* self, PyObject* args)
-{
-  long frame=0;
-  double fps=0;
-  do {
-    if (!PyArg_ParseTuple(args, "l", &frame))
-      break;
-    fps = [_self nominalFramerate];
-    if (fps <= 0)
-      break;
-    [_self.player
-     seekToTime:CMTimeMakeWithSeconds((double)frame/fps, VIDEO_SEEK_TIMESCALE)
-     toleranceBefore:kCMTimeZero
-     toleranceAfter:kCMTimeZero];
-
-  } while(0);
-  Py_RETURN_NONE;
-}
-
-PyObject*
-video_tell_frame(PyObject* self, PyObject* args)
-{
-  double fps=0;
-  do {
-    fps = [_self nominalFramerate];
-    if (fps <= 0)
-      break;
-    return Py_BuildValue("l", (long)(CMTimeGetSeconds( _self.player.currentTime ) * fps));
-  } while(0);
-  Py_RETURN_NONE;
-}
-
-PyObject*
-video_get_framerate(PyObject* self, PyObject* args)
-{
-  return Py_BuildValue("f", [_self nominalFramerate]);
-}
-
-PyObject*
-video_get_duration(PyObject* self, PyObject* args)
-{
-  return Py_BuildValue("f", [_self duration]);
-}
-
-PyObject*
-video_start_playback(PyObject* self, PyObject* args)
-{
-  do {
-    if (_self.playerlayer == nil)
-      break ;
-    if (_self.playerlayer.hidden)
-      break;
-    //[_self playheadToTimeline:YES];
-  } while(0);
-  Py_RETURN_NONE;
-}
-
-PyObject*
-video_stop_playback(PyObject* self, PyObject* args)
-{
-  do {
-    [_self.player pause];
-  } while(0);
-  Py_RETURN_NONE;
-}
-
-static PyMethodDef video_def[] = {
-  {"openMedia",    video_open_media, METH_VARARGS, ""},
-  {"closeMedia",   video_close_media, METH_VARARGS, ""},
-  {"queryMedia",   video_query_media, METH_VARARGS, ""},
-  {"mediaLoaded",  video_media_loaded, METH_VARARGS, ""},
-  {"mediaReady",   video_media_ready, METH_VARARGS, ""},
-  {"seek",         video_seek_time, METH_VARARGS, ""},
-  {"tell",         video_tell_time, METH_VARARGS, ""},
-  {"gotoFrame",    video_seek_frame, METH_VARARGS, ""},
-  {"atFrame",      video_tell_frame, METH_VARARGS, ""},
-  {"framerate",    video_get_framerate, METH_VARARGS, ""},
-  {"duration",     video_get_duration, METH_VARARGS, ""},
-  {"play",         video_start_playback, METH_VARARGS, ""},
-  {"stop",         video_stop_playback, METH_VARARGS, ""},
-  {NULL, NULL, 0, NULL}
-};
-
-void
-video_register_module()
-{
-  static bool initialized_=false;
-  if (initialized_)
-    return ;
-  [[Runtime sharedRuntime] register:@"video" interface:video_def];
-  initialized_=true;
-}

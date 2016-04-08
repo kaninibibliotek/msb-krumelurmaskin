@@ -3,15 +3,22 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 
+@protocol ViewViewDelegate <NSObject>
+-(void)videoLoaded:(BOOL)ready;
+@end
+
 @interface VideoView : NSView
 {
-    AVPlayer*             player;
-    AVPlayerLayer*        playerlayer;
-    AVPlayerItem*         playeritem;
+  AVAsset               *asset;
+  AVPlayer              *player;
+  AVPlayerLayer         *playerlayer;
+  AVPlayerItem          *playeritem;
+  NSMutableArray        *loops;
 }
 
-- (BOOL)      queryMedia:(NSString*)path query:(NSMutableDictionary*)query;
 - (BOOL)      openMedia:(NSString*)path;
+- (int)       addLoopAt:(double)start to:(double)end;
+- (void)      play:(int)loop;
 - (void)      closeMedia;
 - (double)    nominalFramerate;
 - (double)    duration;

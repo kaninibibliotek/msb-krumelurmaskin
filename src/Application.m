@@ -8,12 +8,12 @@
 @end
 
 @implementation Application
-@synthesize window, videoView, preview, camera;
+@synthesize window, video, preview, camera;
 
 - (id) init {
   if (self = [super init]) {
     window = nil;
-    videoView = nil;
+    video = nil;
     preview = nil;
     camera = nil;
     timer = nil;
@@ -30,6 +30,14 @@
 
 -(void)captureImage:(id)sender {
   
+}
+
+-(void)videoPlayFirst:(id)sender {
+  [video play:1];
+}
+
+-(void)videoPlayAll:(id)sender {
+  [video play:0];
 }
 
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
@@ -50,13 +58,18 @@
   
   [defaults synchronize];
 
+  info = bundle.infoDictionary;
+
+  if ((val = [info objectForKey:@"InitialWidth"]))
+    frame.size.width = atol([val UTF8String]);
+  if ((val = [info objectForKey:@"InitialHeight"]))
+    frame.size.height = atol([val UTF8String]);
+
   window = [[NSWindow alloc] initWithContentRect:frame
             styleMask: NSTitledWindowMask|NSClosableWindowMask|NSMiniaturizableWindowMask|NSResizableWindowMask
             backing: NSBackingStoreBuffered
             defer:NO];
 
-  info = bundle.infoDictionary;
-  
   window.title = @"Krumeluren";
   if ((val = [info objectForKey:@"WindowTitle"]))
     window.title = val;
@@ -74,8 +87,11 @@
     preview.target = val;
   preview.delegate = self;
 
+  video = [[VideoView alloc] initWithFrame:frame];
+
   view = [[[NSView alloc] initWithFrame:frame] autorelease];
-    
+  view.autoresizesSubviews = YES;
+
   NSMenuItem *mi;
   NSMenu *ms=nil, *mb = [[[NSMenu alloc] init] autorelease];
 
@@ -102,6 +118,12 @@
   [ms addItemWithTitle:@"Capture" action:@selector(captureImage:) keyEquivalent:@"c"];
   [mb setSubmenu:ms forItem:mi];
   
+  mi = [mb addItemWithTitle:@"Video" action:nil keyEquivalent:@""];
+  ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
+  [ms addItemWithTitle:@"First loop" action:@selector(videoPlayFirst:) keyEquivalent:@""];
+  [ms addItemWithTitle:@"Whole file" action:@selector(videoPlayAll:) keyEquivalent:@""];
+  [mb setSubmenu:ms forItem:mi];
+  
   mi = [mb addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
   [mb setSubmenu:ms forItem:mi];
@@ -111,7 +133,6 @@
   window.contentView = view;
 
   intro = [[QCView alloc] initWithFrame:frame];
-  intro.autoresizesSubviews = YES;
   intro.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
   intro.autostartsRendering = YES;
   intro.eraseColor = [NSColor whiteColor];
@@ -121,8 +142,16 @@
       name:QCViewDidStartRenderingNotification
       object:nil];
 
-  [intro loadCompositionFromFile:[bundle pathForResource:@"intro" ofType:@"qtz"]];
+  if ((val = [info objectForKey:@"IntroAnimation"]))
+    [intro loadCompositionFromFile:[bundle pathForResource:val ofType:@"qtz"]];
+
+  if ((val = [info objectForKey:@"FaceAnimation"]))
+    [video openMedia:[bundle pathForResource:val ofType:@"mov"]];
   
+  [video addLoopAt:0 to:30.0];
+  [video addLoopAt:0 to:10.0];
+
+  [view addSubview:video];
   [view addSubview:intro];
 
   [window makeKeyAndOrderFront:nil];
@@ -132,9 +161,10 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
-  timer = [NSTimer timerWithTimeInterval:15.0
+  timer = [NSTimer timerWithTimeInterval:5.0
     target:self selector:@selector(handleIntroTimedOut:)
     userInfo:nil repeats:NO];
+
   [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
 }
 
@@ -199,6 +229,7 @@ if (intro) { //TODO not here
   }  
   intro = nil;
   timer = nil;
+  [video play:1];
   if (!t) return ;
   NSLog(@"Could not initialize services\n");
 }

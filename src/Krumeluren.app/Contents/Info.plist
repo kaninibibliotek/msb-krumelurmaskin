@@ -29,9 +29,21 @@
         <key>NSPrincipalClass</key>
         <string>NSApplication</string>
 
+        <key>InitialWidth</key>
+        <string>1280</string>
+        
+        <key>InitialHeight</key>
+        <string>800</string>
+
         <key>WindowTitle</key>
         <string>Krumeluren-Huren</string>
         
+        <key>FaceAnimation</key>
+        <string>face</string>
+
+        <key>IntroAnimation</key>
+        <string>intro</string>
+
         <key>USBCameraDeviceName</key>
         <string>Trust Webcam</string>
 

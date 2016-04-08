@@ -10,7 +10,7 @@
 
 @interface Application : NSObject <NSApplicationDelegate, NSWindowDelegate, PreViewDelegate, PTPCameraDelegate> {
   NSWindow     *window;
-  VideoView    *videoView;
+  VideoView    *video;
   PreView      *preview;
   PTPCamera    *camera;
   QCView       *intro;
@@ -19,7 +19,7 @@
 }
 
 @property (nonatomic, retain) NSWindow  *window;
-@property (nonatomic, retain) VideoView *videoView;
+@property (nonatomic, retain) VideoView *video;
 @property (nonatomic, retain) PreView   *preview;
 @property (nonatomic, retain) PTPCamera *camera;
 @end
