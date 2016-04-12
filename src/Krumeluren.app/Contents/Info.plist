@@ -4,31 +4,57 @@
 <dict>
         <key>CFBundleDevelopmentRegion</key>
         <string>en</string>
+        
         <key>CFBundleExecutable</key>
         <string>Krumeluren</string>
+        
         <key>CFBundleIconFile</key>
         <string>Krumeluren.icns</string>
+        
         <key>CFBundleIdentifier</key>
         <string>com.unswornindustries.Krumeluren</string>
+        
         <key>CFBundleInfoDictionaryVersion</key>
         <string>6.0</string>
+        
         <key>CFBundleName</key>
         <string>Krumeluren</string>
+        
         <key>CFBundlePackageType</key>
         <string>APPL</string>
+        
         <key>CFBundleShortVersionString</key>
         <string>1.0</string>
+        
         <key>CFBundleSignature</key>
         <string>????</string>
+        
         <key>CFBundleVersion</key>
         <string>1</string>
+        
         <key>LSMinimumSystemVersion</key>
         <string>10.9</string>
+        
         <key>NSHumanReadableCopyright</key>
         <string>Copyright © 2016 Unsworn Industries AB. All rights reserved.</string>
+        
         <key>NSPrincipalClass</key>
         <string>NSApplication</string>
 
+        <key>Calibration</key>
+        <dict>
+          <key>red</key>
+          <string>0.21</string>
+          <key>green</key>
+          <string>0.57</string>
+          <key>blue</key>
+          <string>0.27</string>
+          <key>distance</key>
+          <string>0.3</string>
+          <key>slope</key>
+          <string>0.02</string>
+        </dict>
+        
         <key>InitialWidth</key>
         <string>1280</string>
         
@@ -39,7 +65,7 @@
         <string>Krumeluren-Huren</string>
         
         <key>FaceAnimation</key>
-        <string>face</string>
+        <string>baseface</string>
 
         <key>IntroAnimation</key>
         <string>intro</string>
@@ -55,7 +81,6 @@
           <key>module</key>
           <string>main</string>
         </dict>
-
 
 </dict>
 </plist>

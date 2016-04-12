@@ -8,12 +8,12 @@
 @end
 
 @implementation Application
-@synthesize window, video, preview, camera;
+@synthesize window, main, preview, camera;
 
 - (id) init {
   if (self = [super init]) {
     window = nil;
-    video = nil;
+    main = nil;
     preview = nil;
     camera = nil;
     timer = nil;
@@ -25,27 +25,19 @@
 
 -(void)togglePreview:(id)sender {
   if ([preview running]) {
-    video.hidden=NO;
-    preview.hidden=YES;
+    main.hidden=NO;
     [preview stop];
+    preview.hidden=YES;
   } else {
-    video.hidden=YES;
-    preview.hidden=NO;
+    main.hidden=YES;
     [preview start];
+    preview.hidden=NO;    
   }
       
 }
 
 -(void)captureImage:(id)sender {
   
-}
-
--(void)videoPlayFirst:(id)sender {
-  [video play:1];
-}
-
--(void)videoPlayAll:(id)sender {
-  [video play:0];
 }
 
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
@@ -61,7 +53,8 @@
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   NSApplication *app = [NSApplication sharedApplication];
   NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-
+  WebPreferences *prefs = [[WebPreferences alloc] init];
+  
   id val, info;
   
   [defaults synchronize];
@@ -95,8 +88,24 @@
     preview.target = val;
   preview.delegate = self;
 
-  video = [[VideoView alloc] initWithFrame:frame];
 
+  prefs.autosaves = NO;
+  prefs.privateBrowsingEnabled = YES;
+  prefs.javaScriptEnabled = YES;
+  prefs.plugInsEnabled = YES;
+  prefs.javaScriptCanOpenWindowsAutomatically = NO;
+  prefs.javaEnabled = NO;
+  prefs.loadsImagesAutomatically = YES;
+  prefs.allowsAnimatedImages = YES;
+
+  main = [[WebView alloc] initWithFrame:frame frameName:@"main" groupName:nil];
+  main.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
+  main.preferences = prefs;
+
+  main.UIDelegate = self;
+  main.frameLoadDelegate = self;
+  main.resourceLoadDelegate = self;
+  
   view = [[[NSView alloc] initWithFrame:frame] autorelease];
   view.autoresizesSubviews = YES;
 
@@ -126,12 +135,6 @@
   [ms addItemWithTitle:@"Capture" action:@selector(captureImage:) keyEquivalent:@"c"];
   [mb setSubmenu:ms forItem:mi];
   
-  mi = [mb addItemWithTitle:@"Video" action:nil keyEquivalent:@""];
-  ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
-  [ms addItemWithTitle:@"First loop" action:@selector(videoPlayFirst:) keyEquivalent:@""];
-  [ms addItemWithTitle:@"Whole file" action:@selector(videoPlayAll:) keyEquivalent:@""];
-  [mb setSubmenu:ms forItem:mi];
-  
   mi = [mb addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
   [mb setSubmenu:ms forItem:mi];
@@ -153,16 +156,15 @@
   if ((val = [info objectForKey:@"IntroAnimation"]))
     [intro loadCompositionFromFile:[bundle pathForResource:val ofType:@"qtz"]];
 
-  if ((val = [info objectForKey:@"FaceAnimation"]))
-    [video openMedia:[bundle pathForResource:val ofType:@"mov"]];
-  
-  [video addLoopAt:0 to:30.0];
-  [video addLoopAt:0 to:10.0];
-
-  [view addSubview:video];
+  if ((val = [info objectForKey:@"FaceAnimation"])) {
+    [main.mainFrame loadRequest: [NSURLRequest requestWithURL:
+      [NSURL URLWithString:[bundle pathForResource:
+         [@"html" stringByAppendingPathComponent:val] ofType:@"html"]]]];
+  }
+  [view addSubview:main];
   [view addSubview:preview];
 
-  video.hidden = YES;
+  main.hidden = YES;
   preview.hidden = YES;
   
   [view addSubview:intro];
@@ -174,7 +176,7 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
-  timer = [NSTimer timerWithTimeInterval:5.0
+  timer = [NSTimer timerWithTimeInterval:0.5
     target:self selector:@selector(handleIntroTimedOut:)
     userInfo:nil repeats:NO];
 
@@ -242,10 +244,49 @@ if (intro) { //TODO not here
   }  
   intro = nil;
   timer = nil;
-  [video play:1];
-  video.hidden=NO;
+  main.hidden=NO;
   if (!t) return ;
   NSLog(@"Could not initialize services\n");
+}
+
+#pragma mark - WebView Delegate.
+
+- (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)frame {
+}
+
+- (void)webView:(WebView *)sender didFailLoadWithError:(NSError *)error forFrame:(WebFrame *)frame {
+  NSLog(@"failed to load frame: %@\n", [error localizedDescription]);
+}
+
+- (void)webView:(WebView *)webView didClearWindowObject:(WebScriptObject *)windowScriptObject forFrame:(WebFrame *)frame {
+  /*
+  Application *app = (Application*)[NSApplication sharedApplication].delegate;
+  [windowScriptObject setValue:app.api forKey:@"api"];
+  [windowScriptObject setValue:app.console forKey:@"console"];
+  */
+}
+
+- (void)webView:(WebView *)sender runJavaScriptAlertPanelWithMessage:(NSString *)message {
+  NSLog(@"javascript alert: %@\n", message);
+}
+
+- (void)webView:(WebView *)webView resource:(id)identifier didFailLoadingWithError:(NSError *)error fromDataSource:(WebDataSource *)dataSource {
+  NSLog(@"Error loading resource : %@", error);
+}
+
+- (NSURLRequest*) webView:(WebView*)sender
+  resource:(id)identifier
+  willSendRequest:(NSURLRequest*)request
+  redirectResponse:(NSURLResponse*)redirectResponse
+  fromDataSource:(WebDataSource*)dataSource
+{
+  NSURL *url = request.URL;
+  NSLog(@"request: %@\n", [url absoluteString]);
+  return request;
+}
+
+- (void)webView:(WebView *)webView addMessageToConsole:(NSDictionary *)message forFrame:(WebFrame *)frame {
+  NSLog(@"Javascript error: %@",message);
 }
 
 @end

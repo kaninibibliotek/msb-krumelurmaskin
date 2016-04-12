@@ -1,6 +1,8 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 #import <Quartz/Quartz.h>
+#import <WebKit/WebKit.h>
+
 #import "VideoView.h"
 #import "PreView.h"
 #import "PTPCamera.h"
@@ -10,7 +12,7 @@
 
 @interface Application : NSObject <NSApplicationDelegate, NSWindowDelegate, PreViewDelegate, PTPCameraDelegate> {
   NSWindow     *window;
-  VideoView    *video;
+  WebView      *main;
   PreView      *preview;
   PTPCamera    *camera;
   QCView       *intro;
@@ -19,7 +21,7 @@
 }
 
 @property (nonatomic, retain) NSWindow  *window;
-@property (nonatomic, retain) VideoView *video;
+@property (nonatomic, retain) WebView   *main;
 @property (nonatomic, retain) PreView   *preview;
 @property (nonatomic, retain) PTPCamera *camera;
 @end

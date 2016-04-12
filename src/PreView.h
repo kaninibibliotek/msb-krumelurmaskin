@@ -5,10 +5,11 @@
 -(void)usbDeviceFound:(BOOL)found;
 @end
 
-@interface PreView : NSView {
+@interface PreView : NSView<AVCaptureVideoDataOutputSampleBufferDelegate> {
   AVCaptureSession           *captureSession;
   AVCaptureDevice            *device;
-  CALayer                    *savedLayer;
+  CIFilter                   *filter;
+  NSImageView                *imageView;
   NSString                   *target;
   id<PreViewDelegate>        delegate;
 }

@@ -1,3 +1,6 @@
+#import <QuartzCore/QuartzCore.h>
+#import "YVSChromaKeyFilter.h"
+
 #import "PreView.h"
 
 @implementation PreView
@@ -7,18 +10,28 @@
     captureSession = nil;
     device =nil;
     delegate=nil;
-    savedLayer = nil;
+    filter=nil;
+    imageView=nil;
     target = nil;
     self.wantsLayer = YES;
+    self.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
+    imageView = [[NSImageView alloc] initWithFrame:frame];
+    imageView.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
+    imageView.imageScaling = /*NSImageScaleAxesIndependently;*/ NSImageScaleProportionallyUpOrDown;
   }
   return self;
 }
 
+-(void)dealloc {
+  [imageView release];
+  imageView =nil;
+  [super dealloc];
+}
+
 -(void)shutdown {
   NSLog(@"Detaching %@\n", target);
-  if (device) {
+  if (device)
     [device release];
-  }
   device = nil;
 }
 
@@ -41,10 +54,11 @@
 -(void)start {
   NSError *err=nil;
   AVCaptureDeviceInput *input;
-  AVCaptureSession *s;
-  AVCaptureVideoPreviewLayer* layer;
+  AVCaptureSession *session;
+  AVCaptureVideoDataOutput *output;
   NSRect bounds;
-
+  NSDictionary *settings, *info = [[NSBundle mainBundle] infoDictionary];
+  
   NSArray *presetPriority = @[
     AVCaptureSessionPreset352x288,
     AVCaptureSessionPresetLow,    
@@ -60,68 +74,94 @@
     NSLog(@"Unable to start, no device connected\n");
     return ;
   }
-  
-  s = [[AVCaptureSession alloc] init];
+
+  session = [[AVCaptureSession alloc] init];
   input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&err];
   if (err) {
     NSLog(@"Could not create input for device\n");
-    [s release];
+    [session release];
     return ;
   }
-  [s addInput:input];
+  [session addInput:input];
 
   for (NSString *preset in presetPriority) {
     NSLog(@"Trying %@\n", preset);
-    if ([s canSetSessionPreset:preset]) {
+    if ([session canSetSessionPreset:preset]) {
       NSLog(@"Selecting: %@\n", preset);
-      s.sessionPreset = preset;
+      session.sessionPreset = preset;
       break ;
     }
   }
   
-  layer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:s];
-
   bounds = self.bounds;
   
-  layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-  layer.position=CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
-  layer.bounds = bounds;
-  layer.backgroundColor = [[NSColor greenColor] CGColor];
+  output = [[AVCaptureVideoDataOutput alloc] init];
 
-  captureSession = s;
-  savedLayer = [self.layer retain];
-  self.layer = layer;
+  output.videoSettings = @{
+    (id)kCVPixelBufferWidthKey:           [NSNumber numberWithDouble:bounds.size.width/2],
+    (id)kCVPixelBufferHeightKey:          [NSNumber numberWithDouble:bounds.size.height/2],
+    (id)kCVPixelBufferPixelFormatTypeKey: [NSNumber numberWithUnsignedInt:kCVPixelFormatType_32BGRA]
+  };
+
+  [output setSampleBufferDelegate:self queue:dispatch_queue_create("sample buffer delegate", DISPATCH_QUEUE_SERIAL)];
+
+  [session addOutput:output];
+
+  filter = [[CIFilter filterWithName:@"YVSChromaKeyFilter"] retain];
+      
+  [filter setDefaults];
+  if ((settings = [info objectForKey:@"Calibration"]))
+    [YVSChromaKeyFilter setDefaults:filter withDictionary:settings];
+
+  captureSession = session;
+
+  [self addSubview:imageView];
+  
   [captureSession startRunning];
+  
   NSLog(@"Preview started for device:%@\n", device.localizedName);
 }
 
-#if 0
--(void)drawRect:(NSRect)rect {
-  [[NSColor redColor] setFill];
-  NSRectFill(rect);
-  [super drawRect:rect];
-}
-#endif
-
 -(void)stop {
-  CALayer *t;
-  if (savedLayer) {
-    t = self.layer;
-    self.layer = savedLayer;
-    [savedLayer release];
-    if (t) [t release];
-  }
-  savedLayer = nil;
+
+  imageView.image = nil;
+  
+  [imageView removeFromSuperview];
+
   if (captureSession) {
     if (captureSession.running)
       [captureSession stopRunning];
     [captureSession release];
     captureSession=nil;
   }
+  [filter release];
+  filter = nil;
+  
 }
 
 -(BOOL)running {
   return (captureSession && captureSession.running);
 }
 
+- (void)captureOutput:(AVCaptureOutput *)captureOutput
+didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+       fromConnection:(AVCaptureConnection *)connection {
+
+  CVImageBufferRef pixbuf = CMSampleBufferGetImageBuffer(sampleBuffer);
+  CIImage *tmp, *imagebuf = [CIImage imageWithCVImageBuffer:pixbuf];
+  if (filter) {
+    tmp = imagebuf;
+    [filter setValue:tmp forKey:kCIInputImageKey];
+    imagebuf = [filter valueForKey:kCIOutputImageKey];
+  }
+  NSCIImageRep *imageRep  = [NSCIImageRep imageRepWithCIImage:imagebuf];
+  NSImage *image = [[NSImage alloc] initWithSize:[imageRep size]];
+  [image addRepresentation:imageRep];
+  dispatch_async(dispatch_get_main_queue(), ^(void) {
+      self->imageView.image = image;
+      [image release];
+  });
+  
+  
+}
 @end
