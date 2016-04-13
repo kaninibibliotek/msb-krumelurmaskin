@@ -10,7 +10,7 @@
     captureSession = nil;
     device =nil;
     delegate=nil;
-    filter=nil;
+    imgprc=nil;
     imageView=nil;
     target = nil;
     self.wantsLayer = YES;
@@ -57,13 +57,15 @@
   AVCaptureSession *session;
   AVCaptureVideoDataOutput *output;
   NSRect bounds;
-  NSDictionary *settings, *info = [[NSBundle mainBundle] infoDictionary];
+  NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
   
   NSArray *presetPriority = @[
+    /*
     AVCaptureSessionPreset352x288,
     AVCaptureSessionPresetLow,    
     AVCaptureSessionPreset640x480,
-    AVCaptureSessionPresetMedium,                                                       
+    AVCaptureSessionPresetMedium,
+    */
     AVCaptureSessionPreset1280x720,
     AVCaptureSessionPresetHigh,
   ];
@@ -107,11 +109,10 @@
 
   [session addOutput:output];
 
-  filter = [[CIFilter filterWithName:@"YVSChromaKeyFilter"] retain];
-      
-  [filter setDefaults];
-  if ((settings = [info objectForKey:@"Calibration"]))
-    [YVSChromaKeyFilter setDefaults:filter withDictionary:settings];
+  
+  imgprc = [[ImageProcessor alloc] init];
+  
+  imgprc.settings = [info objectForKey:@"Calibration"];
 
   captureSession = session;
 
@@ -134,8 +135,8 @@
     [captureSession release];
     captureSession=nil;
   }
-  [filter release];
-  filter = nil;
+  [imgprc release];
+  imgprc = nil;
   
 }
 
@@ -148,15 +149,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
 
   CVImageBufferRef pixbuf = CMSampleBufferGetImageBuffer(sampleBuffer);
-  CIImage *tmp, *imagebuf = [CIImage imageWithCVImageBuffer:pixbuf];
-  if (filter) {
-    tmp = imagebuf;
-    [filter setValue:tmp forKey:kCIInputImageKey];
-    imagebuf = [filter valueForKey:kCIOutputImageKey];
-  }
-  NSCIImageRep *imageRep  = [NSCIImageRep imageRepWithCIImage:imagebuf];
-  NSImage *image = [[NSImage alloc] initWithSize:[imageRep size]];
-  [image addRepresentation:imageRep];
+  CIImage *imagebuf = [CIImage imageWithCVImageBuffer:pixbuf];
+  NSImage *image = [[imgprc filteredImage:imagebuf] retain];
   dispatch_async(dispatch_get_main_queue(), ^(void) {
       self->imageView.image = image;
       [image release];

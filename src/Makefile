@@ -2,12 +2,12 @@ CC=gcc
 CXX=g++
 CFLAGS=-g -Wno-deprecated-declarations
 
-.SUFFIXES:.o .m. .c .h .cpp
+.SUFFIXES:.o .m .mm .c .h .cpp
 
 PACKAGE=Krumeluren.app
 
 FRAMEWORKS=\
-	-F $(PACKAGE)/Contents/Frameworks \
+	-F$(PACKAGE)/Contents/Frameworks \
 	-framework Cocoa \
 	-framework Python \
 	-framework QuartzCore \
@@ -18,9 +18,9 @@ FRAMEWORKS=\
 	-framework WebKit \
 	-framework opencv2
 
-INCLUDE=-I$(PACKAGE)/Contents/Frameworks/opencv2.framework/Headers
+INCLUDE=-F$(PACKAGE)/Contents/Frameworks
 
-SOURCES=\
+OBJC_SOURCES=\
 	main.m \
 	NSString+Py.m \
 	Runtime.m \
@@ -28,11 +28,14 @@ SOURCES=\
 	PreView.m \
 	PTPCamera.m \
 	YVSChromaKeyFilter.m \
-	ImageProcessor.m \
 	Application.m
 
-OBJECTS=$(SOURCES:.m=.o)
-DEPS=$(SOURCES:.m=.d)
+OBJCXX_SOURCES=\
+	ImageProcessor.mm
+
+OBJECTS=$(OBJC_SOURCES:.m=.o)
+OBJECTS+=$(OBJCXX_SOURCES:.mm=.o)
+DEPS=$(OBJECTS:.o=.d)
 
 ICONSET=$(PACKAGE)/Contents/Resources/Krumeluren.iconset
 ICON=$(ICONSET:.iconset=.icns)
@@ -67,5 +70,9 @@ $(ICON): $(ICONSET)
 -include $(DEPS)
 
 .m.o:
-	@echo Compiling: $@
+	@echo Compiling C: $@
 	@$(CC) -c $(INCLUDE) $(CFLAGS) -MMD -MP -o $@ $<
+
+.mm.o:
+	@echo Compiling CXX: $@
+	@$(CXX) -c $(INCLUDE) $(CFLAGS) -MMD -MP -o $@ $<
