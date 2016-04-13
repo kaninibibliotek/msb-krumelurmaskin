@@ -150,10 +150,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
   CVImageBufferRef pixbuf = CMSampleBufferGetImageBuffer(sampleBuffer);
   CIImage *imagebuf = [CIImage imageWithCVImageBuffer:pixbuf];
-  NSImage *image = [[imgprc filteredImage:imagebuf] retain];
+  CIImage *output = [[imgprc filteredImage:imagebuf] retain];
   dispatch_async(dispatch_get_main_queue(), ^(void) {
-      self->imageView.image = image;
-      [image release];
+      self->imageView.image = [NSImage imageWithCIImage:output];
+      [output release];
   });
   
   

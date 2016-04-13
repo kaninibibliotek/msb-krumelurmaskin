@@ -1,8 +1,9 @@
 CC=gcc
 CXX=g++
 CFLAGS=-g -Wno-deprecated-declarations
+LIBS=-lstdc++
 
-.SUFFIXES:.o .m .mm .c .h .cpp
+.SUFFIXES:.o .os .m .mm .c .h .cpp
 
 PACKAGE=Krumeluren.app
 
@@ -42,13 +43,18 @@ ICON=$(ICONSET:.iconset=.icns)
 
 TARGET=$(PACKAGE)/Contents/MacOS/Krumeluren
 
-all: $(TARGET)
+all: $(TARGET) tests
 
 clean:
 	@rm -f $(TARGET)
 	@rm -f $(OBJECTS)
 	@rm -f $(DEPS)
 	@rm -f $(ICON)
+	@rm -f *.os
+	@rm -f imgprc
+
+tests: ImageProcessor.os
+	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o imgprc ImageProcessor.os YVSChromaKeyFilter.o
 
 $(TARGET): $(OBJECTS) $(ICON)
 	@echo Linking $(PACKAGE)
@@ -76,3 +82,7 @@ $(ICON): $(ICONSET)
 .mm.o:
 	@echo Compiling CXX: $@
 	@$(CXX) -c $(INCLUDE) $(CFLAGS) -MMD -MP -o $@ $<
+
+.mm.os:
+	@echo Compiling Test: $@
+	@$(CXX) -c $(INCLUDE) $(CLFAGS) -D_STANDALONE_TEST_ -o $@ $<
