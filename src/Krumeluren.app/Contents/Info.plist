@@ -43,16 +43,36 @@
 
         <key>Calibration</key>
         <dict>
-          <key>red</key>
-          <string>0.21</string>
-          <key>green</key>
-          <string>0.57</string>
-          <key>blue</key>
-          <string>0.27</string>
-          <key>distance</key>
-          <string>0.3</string>
-          <key>slope</key>
-          <string>0.02</string>
+          <key>Preview</key>
+          <dict>
+            <key>key-red</key>
+            <string>0.21</string>
+            <key>key-green</key>
+            <string>0.57</string>
+            <key>key-blue</key>
+            <string>0.27</string>
+            <key>key-distance</key>
+            <string>0.3</string>
+            <key>key-slope</key>
+            <string>0.02</string>
+          </dict>
+          <key>Process</key>
+          <dict>
+            <key>key-red</key>
+            <string>0.21</string>
+            <key>key-green</key>
+            <string>0.57</string>
+            <key>key-blue</key>
+            <string>0.27</string>
+            <key>key-distance</key>
+            <string>0.3</string>
+            <key>key-slope</key>
+            <string>0.02</string>
+            <key>canny-threshold</key>
+            <string>100</string>
+            <key>poly-tolerance</key>
+            <string>0.01</string>
+          </dict>
         </dict>
         
         <key>InitialWidth</key>

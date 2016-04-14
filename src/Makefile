@@ -40,7 +40,7 @@ ICON=$(ICONSET:.iconset=.icns)
 
 TARGET=$(PACKAGE)/Contents/MacOS/Krumeluren
 
-all: $(TARGET) tests
+all: $(TARGET)
 
 clean:
 	@rm -f $(TARGET)
@@ -50,7 +50,7 @@ clean:
 	@rm -f *.os
 	@rm -f imgprc
 
-tests: ImageProcessor.os
+tests: $(TARGET) ImageProcessor.os
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o imgprc ImageProcessor.os YVSChromaKeyFilter.o
 
 $(TARGET): $(OBJECTS) $(ICON)
