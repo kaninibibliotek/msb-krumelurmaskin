@@ -29,13 +29,10 @@ OBJC_SOURCES=\
 	PreView.m \
 	PTPCamera.m \
 	YVSChromaKeyFilter.m \
+	ImageProcessor.m \
 	Application.m
 
-OBJCXX_SOURCES=\
-	ImageProcessor.mm
-
 OBJECTS=$(OBJC_SOURCES:.m=.o)
-OBJECTS+=$(OBJCXX_SOURCES:.mm=.o)
 DEPS=$(OBJECTS:.o=.d)
 
 ICONSET=$(PACKAGE)/Contents/Resources/Krumeluren.iconset
@@ -79,10 +76,6 @@ $(ICON): $(ICONSET)
 	@echo Compiling C: $@
 	@$(CC) -c $(INCLUDE) $(CFLAGS) -MMD -MP -o $@ $<
 
-.mm.o:
-	@echo Compiling CXX: $@
-	@$(CXX) -c $(INCLUDE) $(CFLAGS) -MMD -MP -o $@ $<
-
-.mm.os:
+.m.os:
 	@echo Compiling Test: $@
 	@$(CXX) -c $(INCLUDE) $(CLFAGS) -D_STANDALONE_TEST_ -o $@ $<
