@@ -1,15 +1,5 @@
 #import "PTPCamera.h"
 
-/***
- * We dont keep the session alive, each task is completed in the order of
- * 
- * - watchdog timer started
- * - request to open the session
- *   -> delegate
- *      - request to tether the device
- *      -> delegate
- *      - request the task (capture, copy, whatever)
- */
 
 enum {
   kStatusIdle,
@@ -23,7 +13,7 @@ enum {
 };
 
 
-#define TASK_TIMEOUT 15.0
+#define TASK_TIMEOUT 10.0
 
 #define ERROR_DOMAIN @"PTPCameraErrorDomain"
 #define ERROR(a,b) [NSError errorWithDomain:ERROR_DOMAIN code:a userInfo:@{NSLocalizedDescriptionKey: @b}]
