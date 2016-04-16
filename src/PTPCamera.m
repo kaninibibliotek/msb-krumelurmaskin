@@ -1,17 +1,58 @@
 #import "PTPCamera.h"
 
+/***
+ * We dont keep the session alive, each task is completed in the order of
+ * 
+ * - watchdog timer started
+ * - request to open the session
+ *   -> delegate
+ *      - request to tether the device
+ *      -> delegate
+ *      - request the task (capture, copy, whatever)
+ */
+
+enum {
+  kStatusIdle,
+  kStatusFindCamera,
+  kStatusConnect,
+  kStatusCapture,
+  kStatusRecieve,
+  kStatusCleanup,
+  kStatusCompleted,
+  kStatusError
+};
+
+
+#define TASK_TIMEOUT 15.0
+
+#define ERROR_DOMAIN @"PTPCameraErrorDomain"
+#define ERROR(a,b) [NSError errorWithDomain:ERROR_DOMAIN code:a userInfo:@{NSLocalizedDescriptionKey: @b}]
+
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - private PTPCamera
+//------------------------------------------------------------------------------------------------------------
+
 @interface PTPCamera ()
 -(void)detach;
+-(void)captureTimeout:(NSTimer*)timer;
+-(void)captureBegin;
+-(void)captureCompletedWithError:(NSError*)error;
 @end
 
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - PTPCamera
+//------------------------------------------------------------------------------------------------------------
+
 @implementation PTPCamera
-@synthesize target, delegate, device;
+@synthesize target, delegate, device, status;
 -(id)init {
   if (self = [super init]) {
     target = nil;
     deviceBrowser = nil;
     delegate = nil;
     device = nil;
+    status = kStatusIdle;
+    curitem = nil;
   }
   return self;
 }
@@ -21,6 +62,7 @@
     NSLog(@"PTPCamera is searching for devices right now\n");
     return ;
   }
+  status = kStatusFindCamera;
   deviceBrowser = [[ICDeviceBrowser alloc] init];
   deviceBrowser.delegate = self;
   deviceBrowser.browsedDeviceTypeMask=ICDeviceLocationTypeMaskLocal|ICDeviceTypeMaskCamera;
@@ -33,12 +75,10 @@
     NSLog(@"No camera attached or not ready\n");
     return ;
   }
-  NSLog(@"Started capture...\n");
-  [device requestOpenSession];
+  [self captureBegin];
 }
 
 -(void)detach {
-  NSLog(@"Detaching from device %@\n", target);
   if (device) {
     device.delegate = nil;
     [device release];
@@ -47,14 +87,93 @@
 }
 
 -(void)shutdown {
+  if (status != kStatusIdle)
+    [self captureCompletedWithError: ERROR(-2, "Service was shutdown")];
   [self detach];
-  NSLog(@"Stopping ICDeviceBrowser\n");
   if (deviceBrowser) {
     [deviceBrowser stop];
     [deviceBrowser release];
   }
   deviceBrowser=nil;
 }
+
+-(void)captureTimeout:(NSTimer*)tmr {
+  timer=nil;
+  [self captureCompletedWithError:ERROR(status, "Task has timed out")];
+}
+
+-(void)captureBegin {
+  NSError  *err;
+  if (!device) {
+    NSLog(@"No Device. Can not begin task\n");
+    return ;
+  }
+  if (self.status != kStatusIdle) {
+    err = ERROR(-1, "Another task already in progress\n");
+    return ;
+  }
+  timer = [NSTimer timerWithTimeInterval: TASK_TIMEOUT
+                                  target:self
+                                selector:@selector(captureTimeout:)
+                                userInfo:nil
+                                 repeats:NO];
+  [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
+  status = kStatusConnect;
+  NSLog(@"Starting capture\n");
+  [device requestOpenSession];
+}
+
+-(void)captureCompletedWithError:(NSError*)error {
+
+  NSImage *result=nil;
+  NSString *path;
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSError *err;
+  unsigned int status_ = status;
+  
+  if (timer) [timer invalidate];
+  timer = nil;
+
+  status = kStatusIdle;
+  
+  if (status_ == kStatusIdle)
+    return ;
+
+  if (curitem) {
+    path = [@"/tmp" stringByAppendingPathComponent:curitem.name];
+    if ([fm fileExistsAtPath:path]) {
+      result = [[NSImage alloc] initWithContentsOfFile:path];
+      [fm removeItemAtPath:path error:&err];
+    }
+    [curitem release];
+  }
+  curitem = nil;
+
+  
+  do {
+    
+    if (!device)
+      break ;
+
+    switch(status_) {
+     case kStatusRecieve:
+       [device cancelDownload];
+       break ;
+     case kStatusCleanup:
+       [device cancelDelete];
+       break ;
+    }
+
+    [device requestDisableTethering];
+    [device requestCloseSession];
+    
+  } while(NO) ;
+  
+  if (delegate)
+    [delegate ptpCaptureCompleted:result withError:error];
+
+}
+
 
 //------------------------------------------------------------------------------------------------------------
 #pragma mark - ICDeviceBrowser
@@ -79,19 +198,15 @@
   }
 
   if (!moreComing) {
+    status = kStatusIdle;
     if (delegate)
       [delegate ptpCameraFound:(device) ? YES : NO];
   }
-
 }
 
 - (void)deviceBrowser:(ICDeviceBrowser*)browser
       didRemoveDevice:(ICDevice*)removedDevice
             moreGoing:(BOOL)moreGoing {
-  if (device && removedDevice == device) {
-    NSLog(@"Device was unplugged (ICDeviceBrowser)\n");
-    [self detach];
-  }
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -100,42 +215,155 @@
 
 - (void)didRemoveDevice:(ICDevice*)removedDevice {
   if (device && removedDevice == device) {
-    NSLog(@"Device was unplugged (ICDevice)\n");
+    if (status != kStatusIdle)
+      [self captureCompletedWithError:ERROR(-3, "Device disconnected")];
     [self detach];
   }
 }
 
 - (void)         device:(ICDevice*)inDevice
 didOpenSessionWithError:(NSError*)error {
-  if (error) {
+  if (error && status != kStatusIdle) {
+    [self captureCompletedWithError:error];
     return ;
   }
-  NSLog(@"Enabling tethering\n");
   [device requestEnableTethering];
 }
 
 - (void)deviceDidBecomeReady:(ICDevice*)inDevice {
-  NSLog(@"Capturing image\n");
-  [device requestTakePicture];
+
 }
 
 - (void)          device:(ICDevice*)inDevice
 didCloseSessionWithError:(NSError*)error {
-  NSLog(@"Capture was completed..\n");
 }
 
 - (void)   device:(ICDevice*)inDevice
 didEncounterError:(NSError*)error {
-    NSLog( @"device: \n%@\ndidEncounterError: \n%@\n", device, error );
+  if (status != kStatusIdle)
+    [self captureCompletedWithError:error];
 }
 
 //------------------------------------------------------------------------------------------------------------
 #pragma mark - ICCameraDevice
 //------------------------------------------------------------------------------------------------------------
 
+- (void)deviceDidBecomeReadyWithCompleteContentCatalog:(ICDevice*)camera {
+  if (status != kStatusConnect)
+    return ;
+  status = kStatusCapture;
+  [device requestTakePicture];
+}
+
 - (void)cameraDevice:(ICCameraDevice*)camera
           didAddItem:(ICCameraItem*)item {
-  NSLog(@"New item available: %@\n", item.name);
 
+  if (status != kStatusCapture)
+    return ;
+  if ([item isKindOfClass:[ICCameraFolder class]])
+    return ;
+  status = kStatusRecieve;
+
+  NSDictionary* options = @{
+    ICDownloadsDirectoryURL: [NSURL fileURLWithPath:@"/tmp"]
+  };
+  if (curitem) [curitem release];
+  curitem = [item retain];
+  [device requestDownloadFile:(ICCameraFile*)item
+                      options:options
+             downloadDelegate:self
+          didDownloadSelector:@selector(didDownloadFile:error:options:contextInfo:)
+                  contextInfo:nil];
+  NSLog(@"Download started for %@\n", item.name);
+}
+
+- (void)cameraDevice:(ICCameraDevice*)camera didCompleteDeleteFilesWithError:(NSError*)error {
+  if (error) NSLog(@"%@\n", [error localizedDescription]);
+  status = kStatusCompleted;
+  [self captureCompletedWithError:nil];
+}
+
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - ICCameraDeviceDownloadDelegate
+//------------------------------------------------------------------------------------------------------------
+
+
+- (void)didDownloadFile:(ICCameraFile*)file
+                  error:(NSError*)error 
+                options:(NSDictionary*)options
+            contextInfo:(void*)contextInfo {
+  if (error)
+    [self captureCompletedWithError:error];
+  status = kStatusCleanup;
+  [device requestDeleteFiles:@[ file ]];
+}
+
+- (void)didReceiveDownloadProgressForFile:(ICCameraFile*)file 
+                          downloadedBytes:(off_t)downloadedBytes
+                                 maxBytes:(off_t)maxBytes {
+}
+
+
+@end
+
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - Test
+//------------------------------------------------------------------------------------------------------------
+
+#if _STANDALONE_TEST_
+#include <sys/signal.h>
+void abort_test(int s) {
+  NSLog(@"Aborting\n");
+  [[NSApplication sharedApplication] terminate:nil];
+}
+@interface PTPDelegate : NSObject<NSApplicationDelegate, PTPCameraDelegate> {
+  PTPCamera *ptp;
+  int loops;
+}
+@property (nonatomic, retain) PTPCamera *ptp;
+@end
+
+@implementation PTPDelegate
+@synthesize ptp;
+- (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+  [ptp connect];
+}
+- (void)applicationWillTerminate:(NSNotification *)aNotification {
+  [ptp shutdown];
+}
+-(void)ptpCameraFound:(BOOL)found {
+  if (!found) {
+    NSLog(@"No camera, no fun\n");
+    [[NSApplication sharedApplication] terminate:nil];
+    return ;
+  }
+  loops = 10;
+  [ptp capture];
+}
+-(void)ptpCaptureCompleted:(NSImage*)image withError:(NSError*)error {
+  NSLog(@"We captured an image: %@\n", (error) ? [error localizedDescription] : @"Success!");
+  NSLog(@"Camera status: %d\n", ptp.status);
+  if (--loops > 0) {
+    [ptp capture];
+    return ;
+  }
+  [[NSApplication sharedApplication] terminate:nil];
 }
 @end
+
+int main(int argc, char **argv) {
+
+  signal(SIGINT, abort_test);
+  @autoreleasepool {
+    NSApplication *app = [NSApplication sharedApplication];
+    PTPDelegate   *me = [[[PTPDelegate alloc] init] autorelease];
+    me.ptp = [[[PTPCamera alloc] init] autorelease];
+    app.delegate = me;
+    me.ptp.target = @"D3200";
+    me.ptp.delegate = me;
+
+    [app run];
+  }
+  return 0;
+}
+#endif

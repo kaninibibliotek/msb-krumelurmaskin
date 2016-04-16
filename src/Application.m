@@ -224,10 +224,6 @@
   NSLog(@"SLR usb camera found: %d\n", found);
 }
 
--(void)ptpCameraReady {
-  NSLog(@"SLR camera ready\n");
-}
-
 -(void)handleIntroBegan:(NSNotification*)notification {
   NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
   NSLog(@"Display ready\n");

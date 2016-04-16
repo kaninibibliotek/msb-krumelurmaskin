@@ -48,10 +48,11 @@ clean:
 	@rm -f $(DEPS)
 	@rm -f $(ICON)
 	@rm -f *.os
-	@rm -f imgprc
+	@rm -f imgprc ptpget
 
-tests: $(TARGET) ImageProcessor.os
+tests: $(TARGET) ImageProcessor.os PTPCamera.os
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o imgprc ImageProcessor.os YVSChromaKeyFilter.o
+	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o ptpget PTPCamera.os
 
 $(TARGET): $(OBJECTS) $(ICON)
 	@echo Linking $(PACKAGE)

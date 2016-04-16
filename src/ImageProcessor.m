@@ -10,6 +10,7 @@
 
 #import "ImageProcessor.h"
 
+#define ERROR_DOMAIN @"ImageProcessorErrorDomain"
 #define ERROR(a,b) [NSError errorWithDomain:nil code:a userInfo:@{NSLocalizedDescriptionKey: @b}]
 
 CGImageRef
