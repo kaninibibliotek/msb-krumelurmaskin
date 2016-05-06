@@ -8,7 +8,7 @@
 @end
 
 @implementation Application
-@synthesize window, main, preview, camera;
+@synthesize window, main, preview, camera, imageview;
 
 - (id) init {
   if (self = [super init]) {
@@ -17,6 +17,7 @@
     preview = nil;
     camera = nil;
     timer = nil;
+    imageview = nil;
   }
   return self;
 }
@@ -37,7 +38,15 @@
 }
 
 -(void)captureImage:(id)sender {
-  
+  if (!self.camera) {
+    NSLog(@"Can not capture image: Camera not initialized\n");
+    return ;
+  }
+  if (!self.camera.device) {
+    NSLog(@"Can not capture image: No Device Found\n");
+    return ;
+  }
+  [self.camera capture];
 }
 
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
@@ -98,6 +107,7 @@
   prefs.loadsImagesAutomatically = YES;
   prefs.allowsAnimatedImages = YES;
 
+
   main = [[WebView alloc] initWithFrame:frame frameName:@"main" groupName:nil];
   main.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
   main.preferences = prefs;
@@ -105,6 +115,10 @@
   main.UIDelegate = self;
   main.frameLoadDelegate = self;
   main.resourceLoadDelegate = self;
+
+  imageview = [[NSImageView alloc] initWithFrame:frame];
+  imageview.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
+  imageview.imageScaling = NSImageScaleProportionallyUpOrDown;
   
   view = [[[NSView alloc] initWithFrame:frame] autorelease];
   view.autoresizesSubviews = YES;
@@ -155,17 +169,14 @@
 
   if ((val = [info objectForKey:@"IntroAnimation"]))
     [intro loadCompositionFromFile:[bundle pathForResource:val ofType:@"qtz"]];
-
-  if ((val = [info objectForKey:@"FaceAnimation"])) {
-    [main.mainFrame loadRequest: [NSURLRequest requestWithURL:
-      [NSURL URLWithString:[bundle pathForResource:
-         [@"html" stringByAppendingPathComponent:val] ofType:@"html"]]]];
-  }
+  
   [view addSubview:main];
+  [view addSubview:imageview];
   [view addSubview:preview];
 
   main.hidden = YES;
   preview.hidden = YES;
+  imageview.hidden = YES;
   
   [view addSubview:intro];
 
@@ -224,6 +235,18 @@
   NSLog(@"SLR usb camera found: %d\n", found);
 }
 
+-(void)ptpCaptureCompleted:(NSImage*)image withError:(NSError*)err {
+  NSLog(@"We captured an image: %@\n", (err) ? [err localizedDescription] : @"Success!");
+  NSLog(@"Camera status: %d\n", self.camera.status);
+  NSImageRep *rep = [[image representations] objectAtIndex:0];
+  NSSize imageSize = NSMakeSize(rep.pixelsWide, rep.pixelsHigh);
+  NSLog(@"Image dimensions: [%f, %f]\n", imageSize.width, imageSize.height);
+  self.imageview.image = image;
+  self.imageview.hidden = NO;
+  self.main.hidden = YES;
+  self.preview.hidden = YES;
+}
+
 -(void)handleIntroBegan:(NSNotification*)notification {
   NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
   NSLog(@"Display ready\n");
@@ -232,17 +255,26 @@
 }
 
 -(void)handleIntroTimedOut:(NSTimer*)t {
-if (intro) { //TODO not here
+  NSDictionary *info = ([NSBundle mainBundle]).infoDictionary;
+  NSString     *val;
+  
+  if (intro) { //TODO not here
     [intro unloadComposition];
     [intro removeFromSuperview];
     [intro release];
     NSLog(@"Leaving intromode\n");
-  }  
+  }
+
+  if ((val = [info objectForKey:@"FaceAnimation"])) {
+    NSString *urlstr = [@"http://127.0.0.1:8881/" stringByAppendingString:val];
+    NSLog(@"Loading face: %@\n", urlstr);
+    [main.mainFrame loadRequest:
+           [NSURLRequest requestWithURL:[NSURL URLWithString:urlstr]]];
+  }
+
   intro = nil;
   timer = nil;
   main.hidden=NO;
-  if (!t) return ;
-  NSLog(@"Could not initialize services\n");
 }
 
 #pragma mark - WebView Delegate.

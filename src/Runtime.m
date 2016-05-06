@@ -24,8 +24,9 @@
   NSString *path, *data;
   PyObject *syspath = 0;
   BOOL success=NO;
-  NSBundle *bundle = [NSBundle mainBundle];
-
+  NSBundle *bundle  = [NSBundle mainBundle];
+  PyObject *m_,*g_,*r_=0;
+  
   @synchronized(self) {
     do {
       
@@ -33,7 +34,7 @@
         PyEval_RestoreThread(state);
 
       syspath = PySys_GetObject("path");
-
+      
       if (!(path =[bundle pathForResource:@"lib" ofType:nil])) {
         NSLog(@"Unable to locate required path: lib\n");
         break ;
@@ -56,15 +57,30 @@
         NSLog(@"An error occured readin resource %@ %@\n", m, [err localizedDescription]);
         break ;
       }
-  
-      PyRun_SimpleString([data UTF8String]);
-  
+
+      if (!(m_ = PyImport_AddModule("__main__"))) {
+        NSLog(@"Unable to import __main__ module");
+        break ;
+      }
+      
+      if (!(g_ = PyModule_GetDict(m_))) {
+        NSLog(@"Unable to getdict __main__");
+        break ;
+      }
+
+      PyDict_SetItemString(g_, "__file__", [path pyString]);
+
+      r_ = PyRun_String([data UTF8String], Py_file_input, g_, g_);
+
+      if (r_) Py_DECREF(r_);
+      
       if (PyErr_Occurred()) {
         NSLog(@"Error parsing module\n");
         PyErr_Print();
         PyErr_Clear();
         break ;
       }
+      
       success = YES;
     } while(NO);
     state = PyEval_SaveThread();

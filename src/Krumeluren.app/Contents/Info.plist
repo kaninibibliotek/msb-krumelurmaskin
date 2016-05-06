@@ -85,7 +85,7 @@
         <string>Krumeluren-Huren</string>
         
         <key>FaceAnimation</key>
-        <string>baseface</string>
+        <string>animation_idle_webgl.html</string>
 
         <key>IntroAnimation</key>
         <string>intro</string>

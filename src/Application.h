@@ -18,10 +18,12 @@
   QCView       *intro;
   NSView       *view;
   NSTimer      *timer;
+  NSImageView  *imageview;
 }
 
-@property (nonatomic, retain) NSWindow  *window;
-@property (nonatomic, retain) WebView   *main;
-@property (nonatomic, retain) PreView   *preview;
-@property (nonatomic, retain) PTPCamera *camera;
+@property (nonatomic, retain) NSWindow    *window;
+@property (nonatomic, retain) WebView     *main;
+@property (nonatomic, retain) PreView     *preview;
+@property (nonatomic, retain) PTPCamera   *camera;
+@property (nonatomic, retain) NSImageView *imageview;                              
 @end
