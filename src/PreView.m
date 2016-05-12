@@ -4,7 +4,7 @@
 #import "PreView.h"
 
 @implementation PreView
-@synthesize target, device, delegate;
+@synthesize target, device, delegate, mode;
 -(id)initWithFrame:(NSRect)frame {
   if (self = [super initWithFrame:frame]) {
     captureSession = nil;
@@ -13,6 +13,7 @@
     imgprc=nil;
     imageView=nil;
     target = nil;
+    mode = kModePreview;
     self.wantsLayer = YES;
     self.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
     imageView = [[NSImageView alloc] initWithFrame:frame];
@@ -41,17 +42,21 @@
   }
   device = nil;
   for (AVCaptureDevice* cam in AVCaptureDevice.devices) {
-    if ([target isEqualToString:cam.localizedName] && [cam hasMediaType:AVMediaTypeVideo]) {
+    NSLog(@"Found capture device:%@\n", cam.localizedName);
+    if ([cam.localizedName hasPrefix:target] && [cam hasMediaType:AVMediaTypeVideo]) {
       device = [cam retain];
       break ;
     }
   }
   if (!device)
     NSLog(@"Target device not found or does not support video\n");
+  else
+    NSLog(@"Video input: %@\n", device.localizedName);
+  
   if (delegate) [delegate usbDeviceFound:(device) ? YES : NO];
 }
 
--(void)start {
+-(void)start:(PreviewMode)preview_mode {
   NSError *err=nil;
   AVCaptureDeviceInput *input;
   AVCaptureSession *session;
@@ -59,16 +64,21 @@
   NSRect bounds;
   NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
   
-  NSArray *presetPriority = @[
-    /*
-    AVCaptureSessionPreset352x288,
-    AVCaptureSessionPresetLow,    
-    AVCaptureSessionPreset640x480,
-    AVCaptureSessionPresetMedium,
-    */
-    AVCaptureSessionPreset1280x720,
-    AVCaptureSessionPresetHigh,
-  ];
+  NSArray *presetPriority;
+
+  mode = preview_mode;
+  
+  if (mode == kModePreview) {
+    presetPriority = @[
+      AVCaptureSessionPreset1280x720,
+      AVCaptureSessionPresetHigh
+    ];
+  } else {
+    presetPriority = @[
+      AVCaptureSessionPreset352x288,
+     AVCaptureSessionPresetLow
+    ];
+  }
   
   if (captureSession) [self stop];
 
@@ -94,8 +104,8 @@
       break ;
     }
   }
-  
-  bounds = self.bounds;
+
+  bounds = (mode == kModePreview) ? self.bounds : NSMakeRect(0, 0, 320, 240);
   
   output = [[AVCaptureVideoDataOutput alloc] init];
 
@@ -109,15 +119,17 @@
 
   [session addOutput:output];
 
-  
+  if (mode == kModePreview) {
+    
+    [self addSubview:imageView];
+  }
+
   imgprc = [[ImageProcessor alloc] init];
   
   imgprc.settings = [info objectForKey:@"Calibration"];
 
   captureSession = session;
 
-  [self addSubview:imageView];
-  
   [captureSession startRunning];
   
   NSLog(@"Preview started for device:%@\n", device.localizedName);
@@ -126,7 +138,7 @@
 -(void)stop {
 
   imageView.image = nil;
-  
+
   [imageView removeFromSuperview];
 
   if (captureSession) {
@@ -144,18 +156,39 @@
   return (captureSession && captureSession.running);
 }
 
+-(void)switchMode:(PreviewMode)preview_mode {
+
+  if ([self running] && mode == preview_mode)
+    return;
+  NSLog(@"Switching modes %d => %d\n", mode, preview_mode);
+  [self stop];
+  [self start:preview_mode];
+  
+}
+
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
 
   CVImageBufferRef pixbuf = CMSampleBufferGetImageBuffer(sampleBuffer);
   CIImage *imagebuf = [CIImage imageWithCVImageBuffer:pixbuf];
-  CIImage *output = [[imgprc filteredImage:imagebuf] retain];
-  dispatch_async(dispatch_get_main_queue(), ^(void) {
-      self->imageView.image = [NSImage imageWithCIImage:output];
-      [output release];
-  });
   
+  if (mode == kModePreview) {
+    CIImage *output = [[imgprc filteredImage:imagebuf] retain];
+    dispatch_async(dispatch_get_main_queue(), ^(void) {
+        self->imageView.image = [NSImage imageWithCIImage:output];
+        [output release];
+      });
+    return ;
+  }
+
+  if ([imgprc compareDetect:imagebuf] && delegate) {
+    dispatch_async(dispatch_get_main_queue(), ^(void) {
+        [delegate motionDetected];
+    });
+  }
+  
+  // sentinel..
   
 }
 @end

@@ -31,10 +31,16 @@
     preview.hidden=YES;
   } else {
     main.hidden=YES;
-    [preview start];
+    [preview start:kModePreview];
     preview.hidden=NO;    
   }
       
+}
+-(void)switchPreviewMode:(id)sender {
+  if (preview.mode == kModePreview)
+    [preview switchMode:kModeSentinel];
+  else
+    [preview switchMode:kModePreview];
 }
 
 -(void)captureImage:(id)sender {
@@ -146,6 +152,7 @@
   mi = [mb addItemWithTitle:@"File" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
   [ms addItemWithTitle:@"Preview" action:@selector(togglePreview:) keyEquivalent:@"p"];
+  [ms addItemWithTitle:@"Switch mode" action:@selector(switchPreviewMode:) keyEquivalent:@"m"];
   [ms addItemWithTitle:@"Capture" action:@selector(captureImage:) keyEquivalent:@"c"];
   [mb setSubmenu:ms forItem:mi];
   
@@ -187,7 +194,7 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
-  timer = [NSTimer timerWithTimeInterval:0.5
+  timer = [NSTimer timerWithTimeInterval:2.5
     target:self selector:@selector(handleIntroTimedOut:)
     userInfo:nil repeats:NO];
 
@@ -212,6 +219,7 @@
   [[Runtime sharedRuntime] run:@"main"];
   [preview connect];
   [camera connect];
+  [preview start:kModeSentinel];
 }
 
 -(void)stopServices {
@@ -231,13 +239,24 @@
   NSLog(@"USB Video camera found: %d\n", found);
 }
 
+-(void)motionDetected {
+  NSLog(@"Motion Detect!");
+  [preview stop];
+  [self togglePreview:nil];
+}
+
 -(void)ptpCameraFound:(BOOL)found {
   NSLog(@"SLR usb camera found: %d\n", found);
 }
 
--(void)ptpCaptureCompleted:(NSImage*)image withError:(NSError*)err {
+-(void)ptpCaptureCompleted:(NSString*)imagePath withError:(NSError*)err {
   NSLog(@"We captured an image: %@\n", (err) ? [err localizedDescription] : @"Success!");
   NSLog(@"Camera status: %d\n", self.camera.status);
+
+  if (imagePath) [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
+  
+  /*
+  NSImage *image = [NSImage imageWithContentsOfFile:imagePath];
   NSImageRep *rep = [[image representations] objectAtIndex:0];
   NSSize imageSize = NSMakeSize(rep.pixelsWide, rep.pixelsHigh);
   NSLog(@"Image dimensions: [%f, %f]\n", imageSize.width, imageSize.height);
@@ -245,6 +264,7 @@
   self.imageview.hidden = NO;
   self.main.hidden = YES;
   self.preview.hidden = YES;
+  */
 }
 
 -(void)handleIntroBegan:(NSNotification*)notification {

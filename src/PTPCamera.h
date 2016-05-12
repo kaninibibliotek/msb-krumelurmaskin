@@ -6,7 +6,7 @@
 
 @protocol PTPCameraDelegate <NSObject>
 -(void)ptpCameraFound:(BOOL)found;
--(void)ptpCaptureCompleted:(NSImage*)image withError:(NSError*)err;
+-(void)ptpCaptureCompleted:(NSString*)imagePath withError:(NSError*)err;
 @end
 
 @interface PTPCamera : NSObject<ICDeviceBrowserDelegate, ICCameraDeviceDelegate, ICCameraDeviceDownloadDelegate> {

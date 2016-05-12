@@ -235,8 +235,14 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   if (self = [super init]) {
     settings = nil;
     filter = nil;
+    last = nil;
   }
   return self;
+}
+
+-(void)dealloc {
+  if (last) [last release];
+  [super dealloc];
 }
 
 -(CIImage*)filteredImage:(CIImage*)input {
@@ -431,6 +437,67 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   CGImageRelease(output);
   CFRelease(exporter);
   
+}
+
+-(BOOL)compareDetect:(CIImage*)image {
+  CGColorRef   greycolor;
+  IplImage *a, *b, *ag, *bg, *d;
+  CvMemStorage *s;
+  CvSeq *c=0;
+  CvSize size;
+  CvRect rect;
+  BOOL detect=NO;
+  
+  if (last == nil) {
+    last = [image retain];
+    return NO;
+  }
+
+  greycolor = 0; //CGColorCreateGenericRGB(0.5, 0.5, 0.5, 1.0);
+    
+  a = IplImageCreateWithCIImage(image, greycolor);
+  b = IplImageCreateWithCIImage(last, greycolor);
+
+  [last release];
+  last = [image retain];
+
+    
+  size = cvGetSize(a);
+  ag = cvCreateImage(size, IPL_DEPTH_8U, 1);
+  cvCvtColor(a, ag, CV_RGB2GRAY);
+  cvReleaseImage(&a);
+  
+  size = cvGetSize(b);
+  bg = cvCreateImage(size, IPL_DEPTH_8U, 1);
+  cvCvtColor(b, bg, CV_RGB2GRAY);
+  cvReleaseImage(&b);
+  
+  s = cvCreateMemStorage(0);
+
+  d = cvCreateImage(size, IPL_DEPTH_8U, 1);
+
+  cvAbsDiff(bg, ag, d);
+
+  cvReleaseImage(&ag);
+  cvReleaseImage(&bg);
+
+  cvSmooth(d, d, CV_GAUSSIAN, 3, 3, 0, 0);
+
+  cvThreshold(d, d, 25, 255, CV_THRESH_BINARY);
+
+  cvFindContours(d, s, &c, sizeof(CvContour), CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
+
+  cvReleaseImage(&d);
+
+  for( ; c!=0 && !detect ; c = c->h_next) {
+    rect = cvBoundingRect(c, 0);
+    detect = (rect.width > 0 || rect.height > 0);
+  }
+
+  cvClearMemStorage(s);
+  c = 0;
+
+  return detect;
 }
 
 +(ImageProcessor*)processorWithSettings:(NSDictionary*)s {

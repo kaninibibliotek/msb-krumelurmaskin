@@ -12,7 +12,6 @@ enum {
   kStatusError
 };
 
-
 #define TASK_TIMEOUT 10.0
 
 #define ERROR_DOMAIN @"PTPCameraErrorDomain"
@@ -115,7 +114,6 @@ enum {
 
 -(void)captureCompletedWithError:(NSError*)error {
 
-  NSImage *result=nil;
   NSString *path;
   NSFileManager *fm = [NSFileManager defaultManager];
   NSError *err;
@@ -131,15 +129,12 @@ enum {
 
   if (curitem) {
     path = [@"/tmp" stringByAppendingPathComponent:curitem.name];
-    if ([fm fileExistsAtPath:path]) {
-      result = [[NSImage alloc] initWithContentsOfFile:path];
-      [fm removeItemAtPath:path error:&err];
-    }
+    if (![fm fileExistsAtPath:path])
+      path = nil;
     [curitem release];
   }
   curitem = nil;
 
-  
   do {
     
     if (!device)
@@ -160,7 +155,7 @@ enum {
   } while(NO) ;
   
   if (delegate)
-    [delegate ptpCaptureCompleted:result withError:error];
+    [delegate ptpCaptureCompleted:path withError:error];
 
 }
 
@@ -330,9 +325,13 @@ void abort_test(int s) {
   loops = 10;
   [ptp capture];
 }
--(void)ptpCaptureCompleted:(NSImage*)image withError:(NSError*)error {
+-(void)ptpCaptureCompleted:(NSString*)imagePath withError:(NSError*)error {
   NSLog(@"We captured an image: %@\n", (error) ? [error localizedDescription] : @"Success!");
   NSLog(@"Camera status: %d\n", ptp.status);
+
+  if (imagePath)
+    [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
+  
   if (--loops > 0) {
     [ptp capture];
     return ;

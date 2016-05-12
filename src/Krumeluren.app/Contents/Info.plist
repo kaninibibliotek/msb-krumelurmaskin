@@ -91,7 +91,7 @@
         <string>intro</string>
 
         <key>USBCameraDeviceName</key>
-        <string>Trust Webcam</string>
+        <string>Trust</string>
 
         <key>PTPCameraDeviceName</key>
         <string>D3200</string>
