@@ -181,14 +181,15 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       });
     return ;
   }
-
+    
+  // sentinel..
+  
   if ([imgprc compareDetect:imagebuf] && delegate) {
     dispatch_async(dispatch_get_main_queue(), ^(void) {
         [delegate motionDetected];
     });
   }
   
-  // sentinel..
-  
 }
+
 @end
