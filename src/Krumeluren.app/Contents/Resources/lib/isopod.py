@@ -1,8 +1,8 @@
 #/********************************************************************************************/
-#/*    isopod.py. Very tiny ssl app server                                                   */
+#/*    isopod.py. Very tiny app server                                                       */
 #/*    http://www.assertfail.org                                                             */
 #/*                                                                                          */
-#/* Copyright (c) sheepresearch 2016                                                         */
+#/* Copyright (c) assertfail / Nicklas Marelius 2016                                         */
 #/* All rights reserved.                                                                     */
 #/*                                                                                          */
 #/* Redistribution and use in source and binary forms, with or without modification,         */
