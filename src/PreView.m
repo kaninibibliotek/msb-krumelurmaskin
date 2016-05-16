@@ -3,6 +3,8 @@
 
 #import "PreView.h"
 
+#define SENC_LIMIT 10
+
 @implementation PreView
 @synthesize target, device, delegate, mode;
 -(id)initWithFrame:(NSRect)frame {
@@ -14,6 +16,7 @@
     imageView=nil;
     target = nil;
     mode = kModePreview;
+    senc = 0;
     self.wantsLayer = YES;
     self.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
     imageView = [[NSImageView alloc] initWithFrame:frame];
@@ -67,6 +70,7 @@
   NSArray *presetPriority;
 
   mode = preview_mode;
+  senc = 0;
   
   if (mode == kModePreview) {
     presetPriority = @[
@@ -183,6 +187,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   }
     
   // sentinel..
+
+  if (senc++ < SENC_LIMIT) // wait for image to stabilize
+    return ;
   
   if ([imgprc compareDetect:imagebuf] && delegate) {
     dispatch_async(dispatch_get_main_queue(), ^(void) {

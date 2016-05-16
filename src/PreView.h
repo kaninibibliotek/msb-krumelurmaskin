@@ -20,12 +20,13 @@ typedef enum {
   NSString                   *target;
   id<PreViewDelegate>        delegate;
   PreviewMode                mode;
+  int                        senc;
 }
 
 @property (nonatomic, retain) NSString            *target;
 @property (nonatomic, readonly) AVCaptureDevice   *device;
 @property (nonatomic, retain) id<PreViewDelegate> delegate;
-@property (nonatomic, readonly) PreviewMode         mode;
+@property (nonatomic, readonly) PreviewMode       mode;
 
 -(void)connect;
 -(void)shutdown;

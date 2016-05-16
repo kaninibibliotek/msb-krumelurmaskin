@@ -8,7 +8,7 @@
 @end
 
 @implementation Application
-@synthesize window, main, preview, camera, imageview;
+@synthesize window, main, preview, camera, imageview, controls;
 
 - (id) init {
   if (self = [super init]) {
@@ -25,17 +25,19 @@
 #pragma mark - Menu actions..
 
 -(void)togglePreview:(id)sender {
-  if ([preview running]) {
-    main.hidden=NO;
+  if ([preview running])
     [preview stop];
+  if (preview.mode == kModePreview) {
+    main.hidden=NO;
     preview.hidden=YES;
+    [preview start:kModeSentinel];
   } else {
     main.hidden=YES;
+    preview.hidden=NO;
     [preview start:kModePreview];
-    preview.hidden=NO;    
   }
-      
 }
+
 -(void)switchPreviewMode:(id)sender {
   if (preview.mode == kModePreview)
     [preview switchMode:kModeSentinel];
@@ -195,16 +197,15 @@
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
   timer = [NSTimer timerWithTimeInterval:2.5
-    target:self selector:@selector(handleIntroTimedOut:)
-    userInfo:nil repeats:NO];
-
+    target:self selector:@selector(handleIntroTimeout:)
+    userInfo:@"intro" repeats:NO];
+  
   [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
   if (timer) {
     [timer invalidate];
-    [self handleIntroTimedOut:nil];
   }
   
   [self stopServices];
@@ -219,7 +220,6 @@
   [[Runtime sharedRuntime] run:@"main"];
   [preview connect];
   [camera connect];
-  [preview start:kModeSentinel];
 }
 
 -(void)stopServices {
@@ -243,6 +243,17 @@
   NSLog(@"Motion Detect!");
   [preview stop];
   [self togglePreview:nil];
+  NSLog(@"Starting timer");
+  timer = [NSTimer timerWithTimeInterval:5
+                                  target:self selector:@selector(handleCaptureTimeout:)
+                                userInfo:@"capture" repeats:NO];
+  [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
+}
+
+-(void)controlChanged:(id)sender reason:(int)rs {
+  switch(rs) {
+   case 1: [(Controls*)sender brightness:254]; break;
+  }
 }
 
 -(void)ptpCameraFound:(BOOL)found {
@@ -274,7 +285,13 @@
   [self startServices];
 }
 
--(void)handleIntroTimedOut:(NSTimer*)t {
+-(void)handleCaptureTimeout:(NSTimer*)t {
+  NSLog(@"Capture timed out");
+  [self togglePreview:nil];
+  timer = nil;
+}
+
+-(void)handleIntroTimeout:(NSTimer*)t {
   NSDictionary *info = ([NSBundle mainBundle]).infoDictionary;
   NSString     *val;
   
@@ -295,6 +312,7 @@
   intro = nil;
   timer = nil;
   main.hidden=NO;
+  [preview start:kModeSentinel];
 }
 
 #pragma mark - WebView Delegate.

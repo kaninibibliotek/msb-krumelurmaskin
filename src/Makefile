@@ -9,6 +9,7 @@ PACKAGE=Krumeluren.app
 
 FRAMEWORKS=\
 	-F$(PACKAGE)/Contents/Frameworks \
+	-framework IOKit \
 	-framework Cocoa \
 	-framework Python \
 	-framework QuartzCore \
@@ -30,7 +31,8 @@ OBJC_SOURCES=\
 	PTPCamera.m \
 	YVSChromaKeyFilter.m \
 	ImageProcessor.m \
-	Application.m
+	Application.m \
+	Controls.m
 
 OBJECTS=$(OBJC_SOURCES:.m=.o)
 DEPS=$(OBJECTS:.o=.d)
@@ -50,9 +52,10 @@ clean:
 	@rm -f *.os
 	@rm -f imgprc ptpget
 
-tests: $(TARGET) ImageProcessor.os PTPCamera.os
+tests: $(TARGET) ImageProcessor.os PTPCamera.os Controls.os
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o imgprc ImageProcessor.os YVSChromaKeyFilter.o
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o ptpget PTPCamera.os
+	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o ctls   Controls.os
 
 $(TARGET): $(OBJECTS) $(ICON)
 	@echo Linking $(PACKAGE)
@@ -79,4 +82,4 @@ $(ICON): $(ICONSET)
 
 .m.os:
 	@echo Compiling Test: $@
-	@$(CXX) -c $(INCLUDE) $(CLFAGS) -D_STANDALONE_TEST_ -o $@ $<
+	@$(CXX) -c $(INCLUDE) $(CLFAGS) -D_STANDALONE_TEST_=1 -o $@ $<
