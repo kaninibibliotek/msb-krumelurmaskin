@@ -9,7 +9,7 @@
 #import "Controls.h"
 
 #define app_ ((Application*)[NSApplication sharedApplication].delegate)
-
+  
 @interface Application : NSObject <NSApplicationDelegate, NSWindowDelegate, PreViewDelegate, PTPCameraDelegate, ControlDelegate> {
   NSWindow     *window;
   WebView      *main;
@@ -20,6 +20,8 @@
   NSTimer      *timer;
   NSImageView  *imageview;
   Controls     *controls;
+  unsigned int status;
+  double       stime;
 }
 
 @property (nonatomic, retain) NSWindow    *window;

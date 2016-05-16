@@ -2,10 +2,56 @@
 #import "Application.h"
 #import "Runtime.h"
 
+#define TIMER_INTERVAL 0.5
+#define ERROR_DOMAIN @"ApplicationDomain"
+#define ERROR(a,b) [NSError errorWithDomain:ERROR_DOMAIN code:a userInfo:@{NSLocalizedDescriptionKey: @b}]
+
+//------------------------------------------------------------------------------------------------------------
+
+enum {
+  kStatusIntro,  
+  kStatusIdle,
+  kStatusPreview,
+  kStatusCapture,
+  kStatusProcess,
+  kStatusPublish
+};
+
+//------------------------------------------------------------------------------------------------------------
+
+typedef struct {
+  const char   *name;
+  unsigned int next;
+  unsigned int timeout;
+  BOOL         init;
+  double       limit;
+} ssm_t;
+
+//------------------------------------------------------------------------------------------------------------
+
+static ssm_t sm[] = {
+  {"intro",   kStatusIdle,    kStatusIdle, YES, 5.0},
+  {"idle" ,   kStatusPreview, kStatusIdle, YES, 0.0},
+  {"preview", kStatusCapture, kStatusIdle, YES, 30.0},
+  {"capture", kStatusProcess, kStatusIdle, YES, 10.0},
+  {"process", kStatusPublish, kStatusIdle, YES, 5.0},
+  {"publish", kStatusIdle,    kStatusIdle, YES, 5.0}
+};
+
+//------------------------------------------------------------------------------------------------------------
+
 @interface Application ()
--(void)startServices;
--(void)stopServices;
+-(void)nextState;
+-(void)gotoState:(unsigned int)state;
+-(void)handleTimer:(NSTimer*)timer;
+-(void)initState:(unsigned int)state error:(NSError**)err;
+-(void)updateState;
+-(void)exitState:(unsigned int)current;
+-(void)enterState:(unsigned int)next error:(NSError**)err;
+
 @end
+
+//------------------------------------------------------------------------------------------------------------
 
 @implementation Application
 @synthesize window, main, preview, camera, imageview, controls;
@@ -18,50 +64,32 @@
     camera = nil;
     timer = nil;
     imageview = nil;
+    controls = nil;
+    status = kStatusIntro;
+    stime  = 0;
   }
   return self;
 }
 
+//------------------------------------------------------------------------------------------------------------
 #pragma mark - Menu actions..
+//------------------------------------------------------------------------------------------------------------
 
 -(void)togglePreview:(id)sender {
-  if ([preview running])
-    [preview stop];
-  if (preview.mode == kModePreview) {
-    main.hidden=NO;
-    preview.hidden=YES;
-    [preview start:kModeSentinel];
-  } else {
-    main.hidden=YES;
-    preview.hidden=NO;
-    [preview start:kModePreview];
-  }
-}
-
--(void)switchPreviewMode:(id)sender {
-  if (preview.mode == kModePreview)
-    [preview switchMode:kModeSentinel];
-  else
-    [preview switchMode:kModePreview];
+  [self gotoState:kStatusPreview];
 }
 
 -(void)captureImage:(id)sender {
-  if (!self.camera) {
-    NSLog(@"Can not capture image: Camera not initialized\n");
-    return ;
-  }
-  if (!self.camera.device) {
-    NSLog(@"Can not capture image: No Device Found\n");
-    return ;
-  }
-  [self.camera capture];
+  [self gotoState:kStatusCapture];
 }
 
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
   return YES;
 }
 
+//------------------------------------------------------------------------------------------------------------
 #pragma mark - Application Delegate
+//------------------------------------------------------------------------------------------------------------
 
 - (void)applicationWillFinishLaunching:(NSNotification *)aNotification {
 
@@ -171,11 +199,6 @@
   intro.autostartsRendering = YES;
   intro.eraseColor = [NSColor whiteColor];
 
-  [nc addObserver:self 
-      selector:@selector(handleIntroBegan:) 
-      name:QCViewDidStartRenderingNotification
-      object:nil];
-
   if ((val = [info objectForKey:@"IntroAnimation"]))
     [intro loadCompositionFromFile:[bundle pathForResource:val ofType:@"qtz"]];
   
@@ -196,44 +219,153 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
-  timer = [NSTimer timerWithTimeInterval:2.5
-    target:self selector:@selector(handleIntroTimeout:)
-    userInfo:@"intro" repeats:NO];
-  
+  [[Runtime sharedRuntime] run:@"main"];
+  [preview connect];
+  [camera connect];
+  timer = [NSTimer timerWithTimeInterval:TIMER_INTERVAL
+    target:self selector:@selector(handleTimer:)
+    userInfo:nil repeats:YES];
   [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
-  if (timer) {
-    [timer invalidate];
-  }
+
+  if (timer) [timer invalidate];
+  timer = nil;
   
-  [self stopServices];
+  if (preview) [preview stop];
+  preview = nil;
+  
+  if (camera) [camera shutdown];
+  camera = nil;
 
-  self.preview = nil;
-  self.camera = nil;
-  [window release];
-}
-
--(void)startServices {
-  NSLog(@"Starting services\n");
-  [[Runtime sharedRuntime] run:@"main"];
-  [preview connect];
-  [camera connect];
-}
-
--(void)stopServices {
-  NSLog(@"Stopping services\n");
-  if ([preview running])
-    [preview stop];
-  [preview shutdown];
-  [camera shutdown];
   [[Runtime sharedRuntime] shutdown];
+  
+  [window release];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
   return YES;
 }
+
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - ssm
+//------------------------------------------------------------------------------------------------------------
+
+-(void)nextState {
+  [self gotoState:sm[status].next];
+}
+
+-(void)gotoState:(unsigned int)next {
+  NSError *err=nil;
+  NSLog(@"Switching states [%s => %s]", sm[status].name, sm[next].name);
+
+  [self exitState:status];
+  stime = 0;
+  
+  if (sm[next].init) {
+    NSLog(@"Running initializer for state: %s", sm[next].name);
+    [self initState:next error:&err];
+    sm[next].init = NO;
+  }
+
+  if (!err)
+    [self enterState:next error:&err];
+
+  if (err) {
+    NSLog(@"Unable to transition to next state: %@", [err localizedDescription]);
+    [[NSApplication sharedApplication] terminate:nil];
+    return ;
+  }
+  
+  status = next;
+}
+
+-(void)handleTimer:(NSTimer*)timer {
+  stime += TIMER_INTERVAL;
+  [self updateState];
+  if (!sm[status].limit) return ; // no limit..
+  if (stime < sm[status].limit) return ;  
+  NSLog(@"current state[%s] timed out", sm[status].name);
+  [self gotoState:sm[status].timeout];
+}
+
+-(void)initState:(unsigned int)state error:(NSError**)err {
+  NSDictionary *info = ([NSBundle mainBundle]).infoDictionary;
+  NSString     *val, *url;
+
+  switch(state) {
+   case kStatusIdle:
+     if (!(val = [info objectForKey:@"FaceAnimation"])) {
+       if (err) *err = ERROR(1, "No animation file specified in info plist");
+       break ;
+     }
+     url = [@"http://127.0.0.1:8881/" stringByAppendingString:val];
+     [main.mainFrame loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]];
+     main.hidden = NO;
+     break;
+   case kStatusPreview:
+     if (!preview.device) {
+       if (err) *err = ERROR(1, "No Video camera attached");
+       break;
+     }
+   case kStatusCapture:
+     if (!camera.device) {
+       if (err) *err = ERROR(1, "No SLR Camera attached");
+       break ;
+     }
+  }
+}
+
+-(void)updateState {
+  if (status == kStatusPreview && controls) {
+    [controls button]; // poll button
+  }
+}
+
+
+-(void)exitState:(unsigned int)current {
+
+  switch(current) {
+   case kStatusIntro:
+     if (!intro) break ;
+     [intro unloadComposition];
+     [intro removeFromSuperview];
+     [intro release];
+     intro = nil;
+     break;
+   case kStatusIdle:
+     main.hidden = YES;
+     [preview stop];
+     break ;
+   case kStatusPreview:
+     preview.hidden = YES;
+     [controls brightness:0];
+     controls = nil;
+     break;
+  }
+}
+
+-(void)enterState:(unsigned int)next error:(NSError**)err {
+  
+  switch(next) {
+   case kStatusIdle:
+     main.hidden = NO;
+     [preview start:kModeSentinel];
+     break;
+   case kStatusPreview:
+     [preview start:kModePreview];
+     preview.hidden = NO;
+     controls = [Controls controlsWithTarget:self];
+     [controls brightness:100];
+     break ;
+  }
+  
+}
+
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - PreViewDelgate
+//------------------------------------------------------------------------------------------------------------
 
 -(void)usbDeviceFound:(BOOL)found {
   NSLog(@"USB Video camera found: %d\n", found);
@@ -241,14 +373,12 @@
 
 -(void)motionDetected {
   NSLog(@"Motion Detect!");
-  [preview stop];
-  [self togglePreview:nil];
-  NSLog(@"Starting timer");
-  timer = [NSTimer timerWithTimeInterval:5
-                                  target:self selector:@selector(handleCaptureTimeout:)
-                                userInfo:@"capture" repeats:NO];
-  [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
+  [self nextState];
 }
+
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - ControlDelgate
+//------------------------------------------------------------------------------------------------------------
 
 -(void)controlChanged:(id)sender reason:(int)rs {
   switch(rs) {
@@ -256,12 +386,20 @@
   }
 }
 
+//------------------------------------------------------------------------------------------------------------
+#pragma mark - PTPCameraDelegate
+//------------------------------------------------------------------------------------------------------------
+
 -(void)ptpCameraFound:(BOOL)found {
   NSLog(@"SLR usb camera found: %d\n", found);
 }
 
 -(void)ptpCaptureCompleted:(NSString*)imagePath withError:(NSError*)err {
-  NSLog(@"We captured an image: %@\n", (err) ? [err localizedDescription] : @"Success!");
+  if (err) {
+    NSLog(@"ptpCameraCapture: %@", [err localizedDescription]);
+    return ;
+  }
+  NSLog(@"We captured an image: %@\n", imagePath);
   NSLog(@"Camera status: %d\n", self.camera.status);
 
   if (imagePath) [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
@@ -278,44 +416,9 @@
   */
 }
 
--(void)handleIntroBegan:(NSNotification*)notification {
-  NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-  NSLog(@"Display ready\n");
-  [nc removeObserver:self name:QCViewDidStartRenderingNotification object:nil];
-  [self startServices];
-}
-
--(void)handleCaptureTimeout:(NSTimer*)t {
-  NSLog(@"Capture timed out");
-  [self togglePreview:nil];
-  timer = nil;
-}
-
--(void)handleIntroTimeout:(NSTimer*)t {
-  NSDictionary *info = ([NSBundle mainBundle]).infoDictionary;
-  NSString     *val;
-  
-  if (intro) { //TODO not here
-    [intro unloadComposition];
-    [intro removeFromSuperview];
-    [intro release];
-    NSLog(@"Leaving intromode\n");
-  }
-
-  if ((val = [info objectForKey:@"FaceAnimation"])) {
-    NSString *urlstr = [@"http://127.0.0.1:8881/" stringByAppendingString:val];
-    NSLog(@"Loading face: %@\n", urlstr);
-    [main.mainFrame loadRequest:
-           [NSURLRequest requestWithURL:[NSURL URLWithString:urlstr]]];
-  }
-
-  intro = nil;
-  timer = nil;
-  main.hidden=NO;
-  [preview start:kModeSentinel];
-}
-
+//------------------------------------------------------------------------------------------------------------
 #pragma mark - WebView Delegate.
+//------------------------------------------------------------------------------------------------------------
 
 - (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)frame {
 }
@@ -325,11 +428,7 @@
 }
 
 - (void)webView:(WebView *)webView didClearWindowObject:(WebScriptObject *)windowScriptObject forFrame:(WebFrame *)frame {
-  /*
-  Application *app = (Application*)[NSApplication sharedApplication].delegate;
-  [windowScriptObject setValue:app.api forKey:@"api"];
-  [windowScriptObject setValue:app.console forKey:@"console"];
-  */
+
 }
 
 - (void)webView:(WebView *)sender runJavaScriptAlertPanelWithMessage:(NSString *)message {
