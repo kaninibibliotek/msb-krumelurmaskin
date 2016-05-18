@@ -646,8 +646,9 @@ int main(int argc, char **argv) {
       @autoreleasepool {
         input = [prc loadImage:[NSURL fileURLWithPath:path isDirectory:NO]];
         NSLog(@"Testrun %d\n", i);
-        output = [prc apply:input];
+        output = [prc apply:input];        
         if (output) {
+          NSLog(@"Success");
           [prc writeImage:output toFile:[NSURL fileURLWithPath:@"output.png" isDirectory:NO] error:&err];
           if (err)
             NSLog(@"An error occured: %@\n", [err localizedDescription]);
