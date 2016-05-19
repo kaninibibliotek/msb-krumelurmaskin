@@ -272,6 +272,7 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
 }
 
 -(CIImage*)filteredImage:(CIImage*)input {
+  
   if (!filter && (self.filter = [CIFilter filterWithName:@"YVSChromaKeyFilter"])) {
     NSLog(@"Creating standard YVSChromaKeyFilter\n");
     [filter setDefaults];
@@ -288,6 +289,7 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
     NSLog(@"Distance: %f\n", [[filter valueForKey:@"inputDistance"] doubleValue]);
     NSLog(@"Slope: %f\n", [[filter valueForKey:@"inputSlopeWidth"] doubleValue]);
   }
+  
   if (filter) {
     [filter setValue:input forKey:kCIInputImageKey];
     return [filter valueForKey:kCIOutputImageKey];

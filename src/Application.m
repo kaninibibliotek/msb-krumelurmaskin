@@ -59,8 +59,8 @@ typedef struct {
 static ssm_t sm[] = {
   {"intro",   kStatusIdle,    kStatusIdle, YES, 5.0},
   {"idle" ,   kStatusPreview, kStatusIdle, YES, 0.0},
-  {"preview", kStatusCapture, kStatusIdle, YES, 30.0},
-  {"capture", kStatusProcess, kStatusIdle, YES, 10.0},
+  {"preview", kStatusCapture, kStatusIdle, YES, 10.0},
+  {"capture", kStatusProcess, kStatusIdle, YES, 5.0},
   {"process", kStatusPublish, kStatusIdle, YES, 5.0},
   {"publish", kStatusIdle,    kStatusIdle, YES, 5.0}
 };
@@ -102,14 +102,9 @@ static ssm_t sm[] = {
 #pragma mark - Menu actions..
 //------------------------------------------------------------------------------------------------------------
 
--(void)togglePreview:(id)sender {
-  [self gotoState:kStatusPreview];
+-(void)nextState:(id)sender {
+  [self nextState];
 }
-
--(void)captureImage:(id)sender {
-  [self gotoState:kStatusCapture];
-}
-
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
   return YES;
 }
@@ -208,9 +203,7 @@ static ssm_t sm[] = {
 
   mi = [mb addItemWithTitle:@"File" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
-  [ms addItemWithTitle:@"Preview" action:@selector(togglePreview:) keyEquivalent:@"p"];
-  [ms addItemWithTitle:@"Switch mode" action:@selector(switchPreviewMode:) keyEquivalent:@"m"];
-  [ms addItemWithTitle:@"Capture" action:@selector(captureImage:) keyEquivalent:@"c"];
+  [ms addItemWithTitle:@"Next State" action:@selector(nextState:) keyEquivalent:@"n"];
   [mb setSubmenu:ms forItem:mi];
   
   mi = [mb addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
@@ -249,6 +242,7 @@ static ssm_t sm[] = {
   [[Runtime sharedRuntime] run:@"main"];
   [preview connect];
   [camera connect];
+
   timer = [NSTimer timerWithTimeInterval:TIMER_INTERVAL
     target:self selector:@selector(handleTimer:)
     userInfo:nil repeats:YES];
@@ -366,9 +360,10 @@ static ssm_t sm[] = {
      [preview stop];
      break ;
    case kStatusPreview:
-     preview.hidden = YES;
-     [controls brightness:0];
+     [controls release];
      controls = nil;
+     preview.hidden = YES;
+     [preview stop];
      break;
   }
 }
@@ -384,7 +379,6 @@ static ssm_t sm[] = {
      [preview start:kModePreview];
      preview.hidden = NO;
      controls = [Controls controlsWithTarget:self];
-     [controls brightness:100];
      break ;
   }
   
@@ -408,8 +402,17 @@ static ssm_t sm[] = {
 //------------------------------------------------------------------------------------------------------------
 
 -(void)controlChanged:(id)sender reason:(int)rs {
-  switch(rs) {
-   case 1: [(Controls*)sender brightness:254]; break;
+  if (rs == kControlConnected && controls.ready) {
+    NSLog(@"Controller ready");
+    [controls brightness:250];
+    return ;
+  }
+  if (rs == kControlBrightness) {
+    NSLog(@"Brightness changed: %d", controls.value);
+    return ;
+  }
+  if (rs == kControlButton && status == kStatusPreview && controls.state) {
+    [camera capture];
   }
 }
 
@@ -430,6 +433,8 @@ static ssm_t sm[] = {
   NSLog(@"Camera status: %d\n", self.camera.status);
 
   if (imagePath) [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
+
+  [self nextState];
   
   /*
   NSImage *image = [NSImage imageWithContentsOfFile:imagePath];

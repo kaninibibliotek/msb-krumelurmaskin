@@ -30,7 +30,7 @@
 #import <Cocoa/Cocoa.h>
 
 enum {
-  kControlNull,
+  kControlInvalid,
   kControlConnected,
   kControlButton,
   kControlBrightness
@@ -46,6 +46,7 @@ enum {
   BOOL                      state;
   int                       value;
   NSObject<ControlDelegate> *delegate;
+  dispatch_queue_t          ioqueue;  
 }
 
 @property (nonatomic, readonly) BOOL ready;
@@ -57,6 +58,7 @@ enum {
 +(Controls*)controlsWithTarget:(NSObject<ControlDelegate>*)target;
 -(void)brightness:(int)b;
 -(void)button;
+-(void)close;
 @end
 
 #endif /* Serial_H_ */

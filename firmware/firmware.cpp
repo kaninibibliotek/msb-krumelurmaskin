@@ -57,7 +57,9 @@ void lightbox() {
 void setup() {
   Serial.begin(9600);
   Serial.setTimeout(500);
-  Serial.write("lb!");
+  Serial.write(0xFF);
+  Serial.write(0x62);
+  Serial.write(0x21);
   ds.begin();
   pinMode(BT0, INPUT);
   digitalWrite(BT0, HIGH);

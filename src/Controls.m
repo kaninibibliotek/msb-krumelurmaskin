@@ -50,8 +50,7 @@
 @interface Controls ()
 +(NSString*)find;
 -(BOOL)open:(NSString*)device;
--(void)close;
--(void)ioCallback:(NSThread*)parent;
+-(void)ioCallback;
 @end
 
 @implementation Controls
@@ -64,11 +63,13 @@
     state = NO;
     value = 0;
     delegate=nil;
+    ioqueue = nil;
   }
   return self;
 }
 
 -(void)dealloc {
+  NSLog(@"Dealloc (%d)\n", fd);
   [self close];
   [super dealloc];
 }
@@ -138,11 +139,12 @@
     tcgetattr(d, &options);
     cfmakeraw(&options);
     ioctl(d, IOSSIOSPEED, &rate);
-    [self performSelectorInBackground:@selector(ioCallback:) 
-                           withObject: [NSThread currentThread]];
-
     fd = d;
-
+    ioqueue = dispatch_queue_create("com.unswornindustries.krumeluren.ioqueue", NULL);
+    dispatch_async(ioqueue, ^(void){
+        [self ioCallback];
+      });
+    NSLog(@"Controls started (%d)", fd);
     return YES;
     
   } while (NO);
@@ -151,7 +153,22 @@
 }
 
 -(void)close {
-  if (fd) close(fd);
+
+  if (fd==0) return ;
+  
+  NSLog(@"Controls closing down (%d)", fd);
+  ready = NO;
+  [self brightness:0];
+  if (delegate)
+    [delegate controlChanged:self reason:kControlConnected];
+  fsync(fd);
+  close(fd);
+  
+  fd = 0;
+
+  if (ioqueue) dispatch_release(ioqueue);
+  ioqueue = nil;
+  
 }
 
 -(void)brightness:(int)bright {
@@ -166,50 +183,49 @@
   write(fd, buf, 3);
 }
 
--(void)ioCallback:(NSThread*)parent {
+-(void)ioCallback {
   unsigned char buf[3];
-  int  cnt=0;
-
+  BOOL changed=NO;
   unsigned char c=0;
   int  rd=0;
-  int  reason=kControlNull;
-  
+  int  reason=kControlInvalid;
+  Controls* target=self;
   @autoreleasepool {
-    
-    while (read(fd, &c, 1)) {
-      switch (c) {
-       case 0xFF:
-         cnt=0;
-       default:
-         buf[cnt++] = c;
-         break;
-      }
-      if (cnt == sizeof(buf)) {
-        reason=kControlNull;
-        if (buf[0] == 0x6c && buf[1] == 0x62 && buf[2] == 0x21) {
+    while (fd && (read(fd, &c, 1) > 0)) {
+      buf[0] = buf[1];
+      buf[1] = buf[2];
+      buf[2] = c;
+      if (buf[0] == 0xFF) {
+        NSLog(@"Command [%x,%x,%x]", buf[0], buf[1], buf[2]);
+        reason=kControlInvalid;
+        if (buf[1] == 0x62 && buf[2] == 0x21) {
           reason = kControlConnected;
           ready = YES;
-        } else if (buf[0] == 0xff) {
+        } else {
           switch (buf[1]) {
            case 0x01:
-             reason = kControlButton;
-             state = buf[2];
+             if (state != buf[2]) {
+               reason = kControlButton;
+               state = buf[2];
+             }
              break ;
            case 0x02:
            case 0x03:
-             reason = kControlBrightness;
-             value = buf[2];
+             if (value != buf[2]) {
+               reason = kControlBrightness;
+               value = buf[2];
+             }
              break;
           }
+      }
+        if (delegate && reason != kControlInvalid) {
+          dispatch_async(dispatch_get_main_queue(), ^{
+              [delegate controlChanged:self reason:reason];
+            });
         }
-        if (delegate && reason != kControlNull) {
-          [delegate controlChanged:self reason:reason];
-        }
-        cnt = 0;
-        buf[0] = buf[1] = buf[2] = 0;
       }
     }
-  }  
+  }
   NSLog(@"ioCallback completed");
 }
 

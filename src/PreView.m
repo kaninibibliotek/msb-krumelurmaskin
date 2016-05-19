@@ -29,7 +29,7 @@
 
 #import "PreView.h"
 
-#define SENC_LIMIT 10
+#define SENC_LIMIT 50
 
 @implementation PreView
 @synthesize target, device, delegate, mode;
@@ -156,7 +156,7 @@
 
   imgprc = [[ImageProcessor alloc] init];
   
-  imgprc.settings = [info objectForKey:@"Calibration"];
+  imgprc.settings = [[info objectForKey:@"Calibration"] objectForKey:@"Preview"];
 
   captureSession = session;
 
