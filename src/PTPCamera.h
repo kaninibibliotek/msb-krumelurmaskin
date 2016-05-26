@@ -43,17 +43,18 @@
   NSTimer                *timer;
   unsigned int           status;
   ICCameraItem           *curitem;
+  NSURL                  *downloadDirectory;
 }
 
 @property (nonatomic, retain)   NSString              *target;
 @property (nonatomic, retain)   id<PTPCameraDelegate> delegate;
 @property (nonatomic, readonly) ICCameraDevice        *device;
 @property (nonatomic, readonly) unsigned int          status;
-
+@property (nonatomic, copy) NSURL                     *downloadDirectory;
 -(void)connect;
 -(void)capture;
 -(void)shutdown;
-
+-(BOOL)attached;
 @end
 
 #endif

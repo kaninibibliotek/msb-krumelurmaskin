@@ -1,9 +1,10 @@
+FAKE_EVENTS?=0
 CC=gcc
 CXX=g++
-CFLAGS=-g -Wno-deprecated-declarations
+CFLAGS=-g -Wno-deprecated-declarations -DFAKE_EVENTS=$(FAKE_EVENTS)
 LIBS=-lstdc++
 
-.SUFFIXES:.o .os .m .mm .c .h .cpp
+.SUFFIXES:.o .os .m .mm .c .h .cpp .xib .nib
 
 PACKAGE=Krumeluren.app
 
@@ -18,6 +19,7 @@ FRAMEWORKS=\
 	-framework ImageCaptureCore \
 	-framework Quartz \
 	-framework WebKit \
+	-framework NetFS \
 	-framework opencv2
 
 INCLUDE=-F$(PACKAGE)/Contents/Frameworks
@@ -25,6 +27,7 @@ INCLUDE=-F$(PACKAGE)/Contents/Frameworks
 OBJC_SOURCES=\
 	main.m \
 	NSString+Py.m \
+	NSURL+NetFS.m \
 	Runtime.m \
 	VideoView.m \
 	PreView.m \
@@ -34,8 +37,10 @@ OBJC_SOURCES=\
 	Application.m \
 	Controls.m
 
+XIB_SOURCES=
 OBJECTS=$(OBJC_SOURCES:.m=.o)
 DEPS=$(OBJECTS:.o=.d)
+NIBS=$(XIB_SOURCES:%.xib=$(PACKAGE)/Contents/Resources/%.nib)
 
 ICONSET=$(PACKAGE)/Contents/Resources/Krumeluren.iconset
 ICON=$(ICONSET:.iconset=.icns)
@@ -49,15 +54,20 @@ clean:
 	@rm -f $(OBJECTS)
 	@rm -f $(DEPS)
 	@rm -f $(ICON)
+	@rm -f $(NIBS)
 	@rm -f *.os
-	@rm -f imgprc ptpget
+	@rm -f imgprc ptpget ctls mnt
 
-tests: $(TARGET) ImageProcessor.os PTPCamera.os Controls.os
+run: $(TARGET)
+	@./$(TARGET)
+
+tests: $(TARGET) ImageProcessor.os PTPCamera.os Controls.os NSURL+NetFS.os
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o imgprc ImageProcessor.os YVSChromaKeyFilter.o
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o ptpget PTPCamera.os
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o ctls   Controls.os
+	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o mnt    NSURL+NetFS.os
 
-$(TARGET): $(OBJECTS) $(ICON)
+$(TARGET): $(OBJECTS) $(NIBS) $(ICON)
 	@echo Linking $(PACKAGE)
 	@$(CC) $(LIBS) $(LDFLAGS) $(FRAMEWORKS) -o $(TARGET) $(OBJECTS)
 	@touch $(PACKAGE)
@@ -82,4 +92,8 @@ $(ICON): $(ICONSET)
 
 .m.os:
 	@echo Compiling Test: $@
-	@$(CXX) -c $(INCLUDE) $(CLFAGS) -D_STANDALONE_TEST_=1 -o $@ $<
+	@$(CXX) -c $(INCLUDE) $(CFLAGS) -D_STANDALONE_TEST_=1 -o $@ $<
+
+$(PACKAGE)/Contents/Resources/%.nib:%.xib
+	@echo Packaging: $@
+	@ibtool --compile $@ $<

@@ -59,8 +59,7 @@
 - (id) init {
   if (self = [super init]) {
     fd = 0;
-    ready = NO;
-    state = NO;
+    ready = state = NO;
     value = 0;
     delegate=nil;
     ioqueue = nil;
@@ -77,6 +76,7 @@
 +(Controls*)controlsWithTarget:(NSObject<ControlDelegate>*)target {
   NSString *path;
   Controls *c=nil;
+
   do {
     if (!(path = [Controls find])) {
       NSLog(@"No serial port found");
@@ -90,7 +90,6 @@
     c.delegate = target;
     return [c autorelease];
   } while (NO) ;
-
   if (c) [c release];
   return nil;
 }
@@ -245,6 +244,13 @@
 
 int main(int argc, char** argv) {
 
+  if (argc < 2) {
+    NSLog(@"Usage: ctls <brightness>");
+    return 1;
+  }
+
+  int brightness = atol(argv[1]);
+  
   @autoreleasepool {
 
     ControlD* d = [[ControlD alloc] init];
@@ -258,13 +264,8 @@ int main(int argc, char** argv) {
       usleep(100*1000);
     }
 
-    [c button];
+    [c brightness:brightness];
 
-    [c brightness:100];
-    
-    getc(stdin);
-
-    [c brightness:0];
   }
   
   return 0;

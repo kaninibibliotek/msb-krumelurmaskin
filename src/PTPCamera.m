@@ -58,7 +58,7 @@ enum {
 //------------------------------------------------------------------------------------------------------------
 
 @implementation PTPCamera
-@synthesize target, delegate, device, status;
+@synthesize target, delegate, device, status, downloadDirectory;
 -(id)init {
   if (self = [super init]) {
     target = nil;
@@ -67,11 +67,16 @@ enum {
     device = nil;
     status = kStatusIdle;
     curitem = nil;
+    downloadDirectory = nil;
   }
   return self;
 }
 
 -(void)connect {
+#if FAKE_EVENTS
+  if (delegate) [delegate ptpCameraFound:YES];
+  return ;
+#endif
   if (deviceBrowser) {
     NSLog(@"PTPCamera is searching for devices right now\n");
     return ;
@@ -85,6 +90,18 @@ enum {
 }
 
 -(void)capture {
+#if FAKE_EVENTS
+  NSString *inpath = [NSString stringWithFormat:@"%s/images/FAKE_%d.JPG", getwd(0), FAKE_EVENTS];
+  NSString *outpath = [downloadDirectory.path stringByAppendingPathComponent:[inpath lastPathComponent]];  
+  NSFileManager *fm = [NSFileManager defaultManager];
+  [fm copyItemAtPath:inpath toPath:outpath error:nil];
+  dispatch_async(dispatch_get_main_queue(), ^{
+      NSLog(@"capture fake image: %@", outpath);
+      if (delegate)
+        [delegate ptpCaptureCompleted:outpath withError:nil];
+    });
+  return ;
+#endif
   if (!device) {
     NSLog(@"No camera attached or not ready\n");
     return ;
@@ -109,6 +126,13 @@ enum {
     [deviceBrowser release];
   }
   deviceBrowser=nil;
+}
+
+-(BOOL)attached {
+#if FAKE_EVENTS
+  return YES;
+#endif
+  return self.device != nil;
 }
 
 -(void)captureTimeout:(NSTimer*)tmr {
@@ -268,15 +292,20 @@ didEncounterError:(NSError*)error {
 - (void)cameraDevice:(ICCameraDevice*)camera
           didAddItem:(ICCameraItem*)item {
 
+  NSURL *url = self.downloadDirectory;
+  
   if (status != kStatusCapture)
     return ;
   if ([item isKindOfClass:[ICCameraFolder class]])
     return ;
   status = kStatusRecieve;
 
+  if (!url) url = [NSURL fileURLWithPath:@"/tmp" isDirectory:YES];
+  
   NSDictionary* options = @{
-    ICDownloadsDirectoryURL: [NSURL fileURLWithPath:@"/tmp"]
+    ICDownloadsDirectoryURL: url 
   };
+  
   if (curitem) [curitem release];
   curitem = [item retain];
   [device requestDownloadFile:(ICCameraFile*)item
@@ -284,7 +313,7 @@ didEncounterError:(NSError*)error {
              downloadDelegate:self
           didDownloadSelector:@selector(didDownloadFile:error:options:contextInfo:)
                   contextInfo:nil];
-  NSLog(@"Download started for %@\n", item.name);
+  NSLog(@"Download started for %@/%@\n", url.path, item.name);
 }
 
 - (void)cameraDevice:(ICCameraDevice*)camera didCompleteDeleteFilesWithError:(NSError*)error {
@@ -329,12 +358,14 @@ void abort_test(int s) {
 @interface PTPDelegate : NSObject<NSApplicationDelegate, PTPCameraDelegate> {
   PTPCamera *ptp;
   int loops;
+  NSString *prefix;
 }
 @property (nonatomic, retain) PTPCamera *ptp;
+@property (nonatomic, retain) NSString *prefix;
 @end
 
 @implementation PTPDelegate
-@synthesize ptp;
+@synthesize ptp,prefix;
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
   [ptp connect];
 }
@@ -347,20 +378,26 @@ void abort_test(int s) {
     [[NSApplication sharedApplication] terminate:nil];
     return ;
   }
-  loops = 10;
   [ptp capture];
 }
 -(void)ptpCaptureCompleted:(NSString*)imagePath withError:(NSError*)error {
   NSLog(@"We captured an image: %@\n", (error) ? [error localizedDescription] : @"Success!");
   NSLog(@"Camera status: %d\n", ptp.status);
 
-  if (imagePath)
-    [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
-  
-  if (--loops > 0) {
-    [ptp capture];
+  if (error) {
+    NSLog(@"Unable to capture image!");
     return ;
   }
+
+  if (!imagePath) {
+    NSLog(@"Capture did not return an image");
+    return ;
+  }
+
+  NSString *output = [self.prefix stringByAppendingPathComponent:[imagePath lastPathComponent]];
+  
+  [[NSFileManager defaultManager] moveItemAtPath:imagePath toPath:output error:nil];
+
   [[NSApplication sharedApplication] terminate:nil];
 }
 @end
@@ -368,9 +405,13 @@ void abort_test(int s) {
 int main(int argc, char **argv) {
 
   signal(SIGINT, abort_test);
+
+  const char* cwd = getwd(0);
+  
   @autoreleasepool {
     NSApplication *app = [NSApplication sharedApplication];
     PTPDelegate   *me = [[[PTPDelegate alloc] init] autorelease];
+    me.prefix = [NSString stringWithCString:cwd encoding:NSUTF8StringEncoding];
     me.ptp = [[[PTPCamera alloc] init] autorelease];
     app.delegate = me;
     me.ptp.target = @"D3200";

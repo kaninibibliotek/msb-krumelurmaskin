@@ -20,10 +20,14 @@ class Krumelur(isopod.app):
     def __init__(self):
         isopod.app.__init__(self, "com.unswornindustries.krumelur")
     def start(self):
-        t = threading.Thread(target=self.run, args=("127.0.0.1", 8881, False))
+        t = threading.Thread(target=self.run, args=("localhost", 8881, False))
         t.start()
 
 #//------------------------------------------------------------------------------------------------------------
+
+def publish(imagepath, storagepath):
+    print "publishing %s to %s" % (imagepath, storagepath)
+    return None
 
 def shutdown():
     global app

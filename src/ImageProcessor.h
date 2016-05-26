@@ -51,7 +51,9 @@
 
 -(CIImage*)loadImage:(NSURL*)fileURL;
 
--(void)writeImage:(CIImage*)image toFile:(NSURL*)fileURL error:(NSError**)err;
+-(BOOL)writeImage:(CIImage*)image toFile:(NSURL*)fileURL error:(NSError**)err;
+
+-(void)applyToPath:(NSString*)inputPath error:(NSError**)error;
 
 -(BOOL)compareDetect:(CIImage*)image;
 

@@ -24,41 +24,81 @@
 /*                                                                                          */
 /********************************************************************************************/
 
-#import <Cocoa/Cocoa.h>
-#import <AVFoundation/AVFoundation.h>
-#import "ImageProcessor.h"
+#import <Foundation/Foundation.h>
+#import <NetFS/NetFS.h>
+#import "NSURL+NetFS.h"
 
-typedef enum {
-  kModePreview,
-  kModeSentinel
-} PreviewMode;
+#define ERROR_DOMAIN @"NSURL+NetFSErrorDomain"
+#define ERROR(a,b) [NSError errorWithDomain:ERROR_DOMAIN code:a userInfo:@{NSLocalizedDescriptionKey: @b}]
 
-@protocol PreViewDelegate <NSObject>
--(void)usbDeviceFound:(BOOL)found;
--(void)motionDetected;
-@end
+@implementation NSURL(NetFS)
+-(BOOL)mount:(NSDictionary*)options path:(NSString**)path error:(NSError**)error {
 
-@interface PreView : NSView<AVCaptureVideoDataOutputSampleBufferDelegate> {
-  AVCaptureSession           *captureSession;
-  AVCaptureDevice            *device;
-  ImageProcessor             *imgprc;
-  NSImageView                *imageView;
-  NSString                   *target;
-  id<PreViewDelegate>        delegate;
-  PreviewMode                mode;
-  int                        senc;
+  CFURLRef    cfurl    = (__bridge CFURLRef) self;
+  CFStringRef cfuser   = 0L;
+  CFStringRef cfpasswd = 0L;
+  CFArrayRef  mp       = 0L;
+  NSString    *value;
+  int         i,r;
+
+  if (options && (value = [options objectForKey:@"username"]))
+    cfuser = (__bridge CFStringRef)value;
+
+  if (options && (value = [options objectForKey:@"password"]))
+    cfpasswd = (__bridge CFStringRef)value;
+  
+  if ((r = NetFSMountURLSync(cfurl, 0L, cfuser, cfpasswd, 0L, 0L, &mp)) != 0) {
+    if (error) *error = ERROR(r, "The requested url could not be mounted");
+    return NO;
+  }
+  if (CFArrayGetCount(mp) == 0) {
+    if (error) *error = ERROR(0, "mount returned success but no mountpoint created");
+    CFRelease(mp);
+    return NO;
+  }
+  if (path)
+    *path = [NSString stringWithString:(__bridge NSString*)CFArrayGetValueAtIndex(mp, 0)];
+  CFRelease(mp);
+  return YES;
 }
 
-@property (nonatomic, retain) NSString            *target;
-@property (nonatomic, readonly) AVCaptureDevice   *device;
-@property (nonatomic, retain) id<PreViewDelegate> delegate;
-@property (nonatomic, readonly) PreviewMode       mode;
-
--(void)connect;
--(void)shutdown;
--(void)start:(PreviewMode)mode;
--(void)stop;
--(BOOL)running;
--(void)switchMode:(PreviewMode)mode;
--(BOOL)attached;
 @end
+
+#if _STANDALONE_TEST_
+
+int main(int argc, char** argv) {
+
+  NSURL               *url;
+  NSMutableDictionary *options;
+  NSString            *path;
+  NSError             *err;
+  
+  if (argc < 2) {
+    NSLog(@"Usage: mnt <url> <user> <passwd>");
+    return 1;
+  }
+  
+  @autoreleasepool {
+
+    url = [NSURL URLWithString:[NSString stringWithCString:argv[1] encoding:NSUTF8StringEncoding]];
+    options = [NSMutableDictionary dictionaryWithCapacity:2];
+    
+    if (argc > 2)
+      [options setObject:[NSString stringWithCString:argv[2] encoding:NSUTF8StringEncoding] forKey:@"username"];
+    
+    if (argc > 3)
+      [options setObject:[NSString stringWithCString:argv[3] encoding:NSUTF8StringEncoding] forKey:@"password"];
+
+    if (![url mount:options path:&path error:&err]) {
+      NSLog(@"Mount failed for %@", url.absoluteString);
+      if (err) NSLog(@"Error %@ code:%ld",  [err localizedDescription], [err code]);
+      return 1;
+    }
+
+    NSLog(@"Volume successfully mounted: %@", path);
+  }
+  
+  return 0;
+}
+
+#endif

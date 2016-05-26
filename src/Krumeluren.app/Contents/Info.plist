@@ -45,34 +45,50 @@
         <dict>
           <key>Preview</key>
           <dict>
+            <!-- for yvs key filter -->
+            <key>enable-key-filter</key>
+            <false/>
             <key>key-red</key>
-            <string>0.21</string>
+            <real>0.21</real>
             <key>key-green</key>
-            <string>0.57</string>
+            <real>0.57</real>
             <key>key-blue</key>
-            <string>0.27</string>
+            <real>0.27</real>
             <key>key-distance</key>
-            <string>0.3</string>
+            <real>0.3</real>
             <key>key-slope</key>
-            <string>0.02</string>
+            <real>0.02</real>
           </dict>
           <key>Process</key>
           <dict>
+            <!-- yvs key filter -->
+            <key>enable-key-filter</key>
+            <false/>
             <key>key-red</key>
-            <string>0.21</string>
+            <real>0.21</real>
             <key>key-green</key>
-            <string>0.57</string>
+            <real>0.57</real>
             <key>key-blue</key>
-            <string>0.27</string>
+            <real>0.27</real>
             <key>key-distance</key>
-            <string>0.3</string>
+            <real>0.3</real>
             <key>key-slope</key>
-            <string>0.02</string>
+            <real>0.02</real>
+            <!-- geometry -->
             <key>canny-threshold</key>
             <string>100</string>
-            <key>poly-tolerance</key>
-            <string>0.01</string>
+            <key>gaussian-size</key>
+            <string>7</string>
+            <key>min-size</key>
+            <string>24</string>
+
           </dict>
+        </dict>
+
+        <key>StorageLocation</key>
+        <dict>
+          <key>url</key>
+          <string>file:///tmp/krumelurdb</string>
         </dict>
         
         <key>InitialWidth</key>
@@ -82,10 +98,18 @@
         <string>800</string>
 
         <key>WindowTitle</key>
-        <string>Krumeluren-Huren</string>
+        <string>Krumeluren Maskinen</string>
+
+        <key>WebViewScale</key>
+        <real>0.6</real>
         
         <key>FaceAnimation</key>
-        <string>animation_idle_webgl.html</string>
+        <array>
+          <string>km_00_lookaround.html</string>
+          <string>km_01_giggle.html</string>
+          <string>km_02_shy.html</string>
+          <string>km_03_bored.html</string>
+        </array>
 
         <key>IntroAnimation</key>
         <string>intro</string>

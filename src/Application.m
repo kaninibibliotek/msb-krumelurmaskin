@@ -26,6 +26,7 @@
 
 
 #import <WebKit/WebKit.h>
+#import "NSURL+NetFS.h"
 #import "Application.h"
 #import "Runtime.h"
 
@@ -57,31 +58,35 @@ typedef struct {
 //------------------------------------------------------------------------------------------------------------
 
 static ssm_t sm[] = {
+#if FAKE_EVENTS
+  {"intro",   kStatusIdle,    kStatusIdle, YES, 0.1},
+#else
   {"intro",   kStatusIdle,    kStatusIdle, YES, 5.0},
-  {"idle" ,   kStatusPreview, kStatusIdle, YES, 0.0},
-  {"preview", kStatusCapture, kStatusIdle, YES, 10.0},
-  {"capture", kStatusProcess, kStatusIdle, YES, 5.0},
-  {"process", kStatusPublish, kStatusIdle, YES, 5.0},
-  {"publish", kStatusIdle,    kStatusIdle, YES, 5.0}
+#endif
+  {"idle" ,   kStatusPreview, kStatusIdle, YES, 60.0},
+  {"preview", kStatusCapture, kStatusIdle, YES, 30.0},
+  {"capture", kStatusProcess, kStatusIdle, YES, 10.0},
+  {"process", kStatusPublish, kStatusIdle, YES, 8.0},
+  {"publish", kStatusIdle,    kStatusIdle, YES, 10.0}
 };
 
 //------------------------------------------------------------------------------------------------------------
 
 @interface Application ()
--(void)nextState;
--(void)gotoState:(unsigned int)state;
+-(void)nextState:(id)argument;
+-(void)gotoState:(unsigned int)state withObject:(id)argument;
 -(void)handleTimer:(NSTimer*)timer;
 -(void)initState:(unsigned int)state error:(NSError**)err;
 -(void)updateState;
 -(void)exitState:(unsigned int)current;
--(void)enterState:(unsigned int)next error:(NSError**)err;
-
+-(void)enterState:(unsigned int)next withObject:(id)argument error:(NSError**)err;
+-(NSURL*)remountStorageLocation;
 @end
 
 //------------------------------------------------------------------------------------------------------------
 
 @implementation Application
-@synthesize window, main, preview, camera, imageview, controls;
+@synthesize window, main, preview, camera, imageview, controls, cachesURL, storageURL;
 
 - (id) init {
   if (self = [super init]) {
@@ -94,6 +99,8 @@ static ssm_t sm[] = {
     controls = nil;
     status = kStatusIntro;
     stime  = 0;
+    cachesURL=nil;
+    storageURL=nil;
   }
   return self;
 }
@@ -102,9 +109,19 @@ static ssm_t sm[] = {
 #pragma mark - Menu actions..
 //------------------------------------------------------------------------------------------------------------
 
--(void)nextState:(id)sender {
-  [self nextState];
+-(void)handleNextState:(id)sender {
+  [self nextState:nil];
 }
+
+#if FAKE_EVENTS
+-(void)fakeMotionEvent:(id)sender {
+  [self motionDetected];
+}
+-(void)fakeButtonEvent:(id)sender {
+  [self controlChanged:controls reason:kControlButton];
+}
+#endif
+
 -(BOOL)validateMenuItem:(NSMenuItem*)item {
   return YES;
 }
@@ -117,15 +134,12 @@ static ssm_t sm[] = {
 
   CGRect frame = CGRectMake(0, 0, 1024, 768);
   NSBundle *bundle = [NSBundle mainBundle];
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   NSApplication *app = [NSApplication sharedApplication];
   NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
   WebPreferences *prefs = [[WebPreferences alloc] init];
   
   id val, info;
   
-  [defaults synchronize];
-
   info = bundle.infoDictionary;
 
   if ((val = [info objectForKey:@"InitialWidth"]))
@@ -165,16 +179,18 @@ static ssm_t sm[] = {
   prefs.loadsImagesAutomatically = YES;
   prefs.allowsAnimatedImages = YES;
 
-
   main = [[WebView alloc] initWithFrame:frame frameName:@"main" groupName:nil];
   main.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
   main.preferences = prefs;
-
+  [[[main mainFrame] frameView] setAllowsScrolling:NO];
+  
   main.UIDelegate = self;
   main.frameLoadDelegate = self;
   main.resourceLoadDelegate = self;
 
   imageview = [[NSImageView alloc] initWithFrame:frame];
+  imageview.wantsLayer = YES;
+  imageview.layerContentsRedrawPolicy = NSViewLayerContentsRedrawOnSetNeedsDisplay;
   imageview.autoresizingMask = NSViewHeightSizable|NSViewWidthSizable;
   imageview.imageScaling = NSImageScaleProportionallyUpOrDown;
   
@@ -203,9 +219,15 @@ static ssm_t sm[] = {
 
   mi = [mb addItemWithTitle:@"File" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
-  [ms addItemWithTitle:@"Next State" action:@selector(nextState:) keyEquivalent:@"n"];
-  [mb setSubmenu:ms forItem:mi];
+  [ms addItemWithTitle:@"Next State" action:@selector(handleNextState:) keyEquivalent:@"n"];
+
+#if FAKE_EVENTS
+  [ms addItemWithTitle:@"Fake Motion Event" action:@selector(fakeMotionEvent:) keyEquivalent:@"m"];
+  [ms addItemWithTitle:@"Fake Button Button" action:@selector(fakeButtonEvent:) keyEquivalent:@"c"];
+#endif
   
+  [mb setSubmenu:ms forItem:mi];
+
   mi = [mb addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
   ms = [[[NSMenu alloc] initWithTitle:mi.title] autorelease];
   [mb setSubmenu:ms forItem:mi];
@@ -238,11 +260,55 @@ static ssm_t sm[] = {
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+  NSURL         *url;
+  NSError       *err;
+  NSFileManager *fm     = [NSFileManager defaultManager];
+  NSBundle      *bundle = [NSBundle mainBundle];
+  NSArray       *array;
+  // deal with locations..
+  do {
+    if (!(url = [fm URLForDirectory:NSCachesDirectory inDomain:NSUserDomainMask appropriateForURL:nil create:YES error:&err])) {
+      if (err) NSLog(@"%@", err.localizedDescription);
+      NSLog(@"Could not get url for NSCachesDirectory");
+      break ;
+    }
+    url = [url URLByAppendingPathComponent:[bundle bundleIdentifier]];
+    if (![fm createDirectoryAtURL:url withIntermediateDirectories:YES attributes:nil error:&err]) {
+      if (err) NSLog(@"%@", err.localizedDescription);
+      NSLog(@"Failed to create caches directory at %@ falling back to /tmp", [url absoluteString]);
+      break;
+    }
+    cachesURL = url;
+  } while(NO);
+  
+  if (!cachesURL) {
+    NSLog(@"Application cache directory not available. falling back to /tmp");
+    cachesURL = [NSURL fileURLWithPath:@"/tmp" isDirectory:YES];
+  }
+
+  storageURL = [self remountStorageLocation];
+
+  NSLog(@"Cache Location: %@", cachesURL.absoluteString);
+  NSLog(@"Storage Location: %@", storageURL.absoluteString);
+
+  camera.downloadDirectory = self.cachesURL;
+
+  NSLog(@"Cleaning cachedir");
+
+  if ((array = [fm contentsOfDirectoryAtPath:cachesURL.path error:nil])) {
+    for (NSString *fn in array) {
+      if (![fn hasPrefix:@"DSC"] || ![fn hasSuffix:@".JPG"])
+        continue ;
+      fn = [cachesURL.path stringByAppendingPathComponent:fn];
+      NSLog(@"Removing %@", fn);
+      [fm removeItemAtPath:fn error:nil];
+    }
+  }
+  
   [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
   [[Runtime sharedRuntime] run:@"main"];
   [preview connect];
   [camera connect];
-
   timer = [NSTimer timerWithTimeInterval:TIMER_INTERVAL
     target:self selector:@selector(handleTimer:)
     userInfo:nil repeats:YES];
@@ -270,14 +336,15 @@ static ssm_t sm[] = {
 }
 
 //------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------
 #pragma mark - ssm
 //------------------------------------------------------------------------------------------------------------
 
--(void)nextState {
-  [self gotoState:sm[status].next];
+-(void)nextState:(id)argument {
+  [self gotoState:sm[status].next withObject:argument];
 }
 
--(void)gotoState:(unsigned int)next {
+-(void)gotoState:(unsigned int)next withObject:argument{
   NSError *err=nil;
   NSLog(@"Switching states [%s => %s]", sm[status].name, sm[next].name);
 
@@ -291,7 +358,7 @@ static ssm_t sm[] = {
   }
 
   if (!err)
-    [self enterState:next error:&err];
+    [self enterState:next withObject:argument error:&err];
 
   if (err) {
     NSLog(@"Unable to transition to next state: %@", [err localizedDescription]);
@@ -308,30 +375,33 @@ static ssm_t sm[] = {
   if (!sm[status].limit) return ; // no limit..
   if (stime < sm[status].limit) return ;  
   NSLog(@"current state[%s] timed out", sm[status].name);
-  [self gotoState:sm[status].timeout];
+  [self gotoState:sm[status].timeout withObject:nil];
 }
 
 -(void)initState:(unsigned int)state error:(NSError**)err {
   NSDictionary *info = ([NSBundle mainBundle]).infoDictionary;
   NSString     *val, *url;
-
+  NSArray      *animations;
+  static int    count=0;
   switch(state) {
    case kStatusIdle:
-     if (!(val = [info objectForKey:@"FaceAnimation"])) {
+     if (!(animations = [info objectForKey:@"FaceAnimation"])) {
        if (err) *err = ERROR(1, "No animation file specified in info plist");
        break ;
      }
+     val = [animations objectAtIndex:count%[animations count]];
+     count++;
      url = [@"http://127.0.0.1:8881/" stringByAppendingString:val];
      [main.mainFrame loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]];
      main.hidden = NO;
      break;
    case kStatusPreview:
-     if (!preview.device) {
+     if (![preview attached]) {
        if (err) *err = ERROR(1, "No Video camera attached");
        break;
      }
    case kStatusCapture:
-     if (!camera.device) {
+     if (![camera attached]) {
        if (err) *err = ERROR(1, "No SLR Camera attached");
        break ;
      }
@@ -360,18 +430,29 @@ static ssm_t sm[] = {
      [preview stop];
      break ;
    case kStatusPreview:
-     [controls release];
+     if (controls)
+       [controls release];
      controls = nil;
      preview.hidden = YES;
      [preview stop];
      break;
+   case kStatusPublish:
+     imageview.image = nil;
+     imageview.hidden = YES;
+     break;
   }
 }
 
--(void)enterState:(unsigned int)next error:(NSError**)err {
+-(void)enterState:(unsigned int)next withObject:(id)argument error:(NSError**)err {
+
+  dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0L);
   
   switch(next) {
    case kStatusIdle:
+     if (status == kStatusIdle) {
+       [self initState:kStatusIdle error:err];
+       break ;
+     }
      main.hidden = NO;
      [preview start:kModeSentinel];
      break;
@@ -380,9 +461,113 @@ static ssm_t sm[] = {
      preview.hidden = NO;
      controls = [Controls controlsWithTarget:self];
      break ;
+   case kStatusCapture:
+     [camera capture];
+     break;
+   case kStatusProcess:
+     dispatch_async(queue, ^{
+         [self process:argument];
+       });
+     break ;
+   case kStatusPublish:
+     imageview.hidden = NO;
+     dispatch_async(queue, ^{
+         [self publish:argument];
+       });
+     break;
   }
   
 }
+
+-(void)storageLocationChanged:(NSNotification*)notification {
+  NSLog(@"Volume changed! %@", notification.name);
+}
+
+-(NSURL*)remountStorageLocation {
+  NSDictionary *info;
+  NSURL        *url, *tmp = [NSURL fileURLWithPath:@"/tmp" isDirectory:YES];
+  NSNotificationCenter *nsc = [[NSWorkspace sharedWorkspace] notificationCenter];
+  NSString *val, *path=nil;
+  NSError *error=nil;
+  
+  [nsc removeObserver:self];
+  
+  if (!(info = [[NSBundle mainBundle].infoDictionary objectForKey:@"StorageLocation"])) {
+    NSLog(@"StorageLocation not specified in infoplist, falling back to /tmp");
+    return tmp;
+  }
+  if (!(val = [info objectForKey:@"url"])) {
+    NSLog(@"StorageLocation does not specify a valid url, falling back to /tmp");
+    return tmp;
+  }
+
+  url = [NSURL URLWithString:val];
+  
+  if ([url.scheme isEqualToString:@"file"])
+    return url;
+
+  [nsc addObserver:self selector: @selector(storageLocationChanged:) name:NSWorkspaceDidMountNotification object: nil];
+  [nsc addObserver:self selector: @selector(storageLocationChanged:) name:NSWorkspaceDidUnmountNotification object:nil];
+
+  [url mount:info path:&path error:&error];
+
+  if (!path) {
+    if (error) NSLog(@"%@", error.localizedDescription);
+    NSLog(@"Failed to mount volume: %@ ", url.absoluteString);
+    return nil;
+  }
+  return [NSURL fileURLWithPath:path isDirectory:YES];
+}
+
+- (void)process:(NSString*)imagePath {
+  NSDictionary   *calibration = [[NSBundle mainBundle].infoDictionary objectForKey:@"Calibration"];
+  ImageProcessor *imgprc      = [[ImageProcessor alloc] init];
+  NSError        *err         = nil;
+  NSLog(@"Process: %@", imagePath);
+  if (!imagePath) {
+    NSLog(@"Invalid file path for process!");
+    return ; // let state timeout
+  }
+  imgprc.settings = [calibration objectForKey:@"Process"];
+  [imgprc applyToPath:imagePath error:&err];
+  if (err) {
+    NSLog(@"Processing failed for %@", imagePath);
+  }
+  [imgprc release];
+  [self nextState:imagePath];
+}
+
+- (void)publish:(NSString*)imagePath {
+  PyObject *rval, *args;
+  NSLog(@"Publish: %@", imagePath);
+
+  NSImage *image = [[NSImage alloc] initWithContentsOfFile:imagePath];
+
+  imageview.image = [image autorelease];
+  imageview.hidden = NO;
+  [self animate];
+
+}
+
+- (void)animate {
+  NSRect r = view.frame;
+
+  imageview.frame = r; // reset position..
+
+  r.origin.x += 100;
+  r.origin.y += 100;
+  r.size.width /= 8;
+  r.size.height /= 8;
+
+  [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+      context.duration = 5.f;
+      imageview.animator.frame = r;
+    } completionHandler:^(void) {
+      NSLog(@"Animation done");
+      [self nextState:nil];
+    }];  
+}
+
 
 //------------------------------------------------------------------------------------------------------------
 #pragma mark - PreViewDelgate
@@ -394,7 +579,7 @@ static ssm_t sm[] = {
 
 -(void)motionDetected {
   NSLog(@"Motion Detect!");
-  [self nextState];
+  [self nextState:nil];
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -411,8 +596,8 @@ static ssm_t sm[] = {
     NSLog(@"Brightness changed: %d", controls.value);
     return ;
   }
-  if (rs == kControlButton && status == kStatusPreview && controls.state) {
-    [camera capture];
+  if (rs == kControlButton && status == kStatusPreview && (controls == nil || controls.state)) {
+    [self nextState:nil];
   }
 }
 
@@ -424,35 +609,31 @@ static ssm_t sm[] = {
   NSLog(@"SLR usb camera found: %d\n", found);
 }
 
--(void)ptpCaptureCompleted:(NSString*)imagePath withError:(NSError*)err {
+-(void)ptpCaptureCompleted:(NSString*)path withError:(NSError*)err {
+  NSError *perr=nil;
+
   if (err) {
     NSLog(@"ptpCameraCapture: %@", [err localizedDescription]);
-    return ;
+    return ; // return and let state timeout
   }
-  NSLog(@"We captured an image: %@\n", imagePath);
+  
+  NSLog(@"We captured an image: %@\n", path);
   NSLog(@"Camera status: %d\n", self.camera.status);
 
-  if (imagePath) [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
+  [self nextState:path];
 
-  [self nextState];
-  
-  /*
-  NSImage *image = [NSImage imageWithContentsOfFile:imagePath];
-  NSImageRep *rep = [[image representations] objectAtIndex:0];
-  NSSize imageSize = NSMakeSize(rep.pixelsWide, rep.pixelsHigh);
-  NSLog(@"Image dimensions: [%f, %f]\n", imageSize.width, imageSize.height);
-  self.imageview.image = image;
-  self.imageview.hidden = NO;
-  self.main.hidden = YES;
-  self.preview.hidden = YES;
-  */
 }
 
 //------------------------------------------------------------------------------------------------------------
 #pragma mark - WebView Delegate.
 //------------------------------------------------------------------------------------------------------------
 
-- (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)frame {
+- (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)webFrame {
+  NSDictionary *info = [NSBundle mainBundle].infoDictionary;
+  double z = ([info objectForKey:@"WebViewScale"]) ? [[info objectForKey:@"WebViewScale"] doubleValue] : 1.0;
+  [main stringByEvaluatingJavaScriptFromString:
+                    [NSString stringWithFormat:@"document.documentElement.style.zoom = \"%f\"", z]];
+
 }
 
 - (void)webView:(WebView *)sender didFailLoadWithError:(NSError *)error forFrame:(WebFrame *)frame {

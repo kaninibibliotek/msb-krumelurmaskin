@@ -37,24 +37,28 @@
 #define app_ ((Application*)[NSApplication sharedApplication].delegate)
   
 @interface Application : NSObject <NSApplicationDelegate, NSWindowDelegate, PreViewDelegate, PTPCameraDelegate, ControlDelegate> {
-  NSWindow     *window;
-  WebView      *main;
-  PreView      *preview;
-  PTPCamera    *camera;
-  QCView       *intro;
-  NSView       *view;
-  NSTimer      *timer;
-  NSImageView  *imageview;
-  Controls     *controls;
-  unsigned int status;
-  double       stime;
+  NSWindow            *window;
+  WebView             *main;
+  PreView             *preview;
+  PTPCamera           *camera;
+  QCView              *intro;
+  NSView              *view;
+  NSTimer             *timer;
+  NSImageView         *imageview;
+  Controls            *controls;
+  unsigned int        status;
+  double              stime;
+  NSURL               *cachesURL;
+  NSURL               *storageURL;
 }
 
-@property (nonatomic, retain) NSWindow    *window;
-@property (nonatomic, retain) WebView     *main;
-@property (nonatomic, retain) PreView     *preview;
-@property (nonatomic, retain) PTPCamera   *camera;
-@property (nonatomic, retain) NSImageView *imageview;
-@property (nonatomic, retain) Controls    *controls;
+@property (nonatomic, retain) NSWindow            *window;
+@property (nonatomic, retain) WebView             *main;
+@property (nonatomic, retain) PreView             *preview;
+@property (nonatomic, retain) PTPCamera           *camera;
+@property (nonatomic, retain) NSImageView         *imageview;
+@property (nonatomic, retain) Controls            *controls;
+@property (nonatomic, readonly) NSURL             *cachesURL;
+@property (nonatomic, readonly) NSURL             *storageURL;
 
 @end

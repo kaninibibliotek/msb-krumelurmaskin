@@ -26,7 +26,7 @@
 
 #import <QuartzCore/QuartzCore.h>
 #import "YVSChromaKeyFilter.h"
-
+#import "Application.h"
 #import "PreView.h"
 
 #define SENC_LIMIT 50
@@ -70,6 +70,10 @@
     [self stop];
   }
   device = nil;
+#if FAKE_EVENTS
+  if (delegate) [delegate usbDeviceFound:YES];
+  return ;
+#endif
   for (AVCaptureDevice* cam in AVCaptureDevice.devices) {
     NSLog(@"Found capture device:%@\n", cam.localizedName);
     if ([cam.localizedName hasPrefix:target] && [cam hasMediaType:AVMediaTypeVideo]) {
@@ -91,12 +95,23 @@
   AVCaptureSession *session;
   AVCaptureVideoDataOutput *output;
   NSRect bounds;
-  NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+  NSDictionary *settings = [[NSBundle mainBundle].infoDictionary objectForKey:@"Calibration"];
   
   NSArray *presetPriority;
 
   mode = preview_mode;
   senc = 0;
+
+#if FAKE_EVENTS
+  if (mode == kModePreview) {
+    NSString* fakeImagePath = [NSString stringWithFormat:@"%s/images/FAKE_%d.JPG", getwd(0), FAKE_EVENTS];
+    NSLog(@"Loading fake preview: %@", fakeImagePath);
+    NSImage *image = [[NSImage alloc] initWithContentsOfFile:fakeImagePath];
+    imageView.image = [image autorelease];
+    [self addSubview:imageView];
+  }
+  return;
+#endif
   
   if (mode == kModePreview) {
     presetPriority = @[
@@ -149,14 +164,12 @@
 
   [session addOutput:output];
 
-  if (mode == kModePreview) {
-    
+  if (mode == kModePreview)
     [self addSubview:imageView];
-  }
 
   imgprc = [[ImageProcessor alloc] init];
   
-  imgprc.settings = [[info objectForKey:@"Calibration"] objectForKey:@"Preview"];
+  imgprc.settings = [settings objectForKey:@"Preview"];
 
   captureSession = session;
 
@@ -194,6 +207,13 @@
   [self stop];
   [self start:preview_mode];
   
+}
+
+-(BOOL)attached {
+#if FAKE_EVENTS
+  return YES;
+#endif
+  return self.device != nil;
 }
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
