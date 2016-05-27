@@ -25,10 +25,6 @@ class Krumelur(isopod.app):
 
 #//------------------------------------------------------------------------------------------------------------
 
-def publish(imagepath, storagepath):
-    print "publishing %s to %s" % (imagepath, storagepath)
-    return None
-
 def shutdown():
     global app
     print "Bye Bye"

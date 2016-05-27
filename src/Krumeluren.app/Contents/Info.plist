@@ -78,7 +78,7 @@
             <key>canny-threshold</key>
             <string>100</string>
             <key>gaussian-size</key>
-            <string>7</string>
+            <string>3</string>
             <key>min-size</key>
             <string>24</string>
 
