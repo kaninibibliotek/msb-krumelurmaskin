@@ -82,6 +82,7 @@ $(ICON): $(ICONSET)
 	@sips -z 256 256   $(ICONSET)/icon_512x512.png --out $(ICONSET)/icon_128x128@2x.png > /dev/null
 	@sips -z 256 256   $(ICONSET)/icon_512x512.png --out $(ICONSET)/icon_256x256.png > /dev/null
 	@sips -z 512 512   $(ICONSET)/icon_512x512.png --out $(ICONSET)/icon_256x256@2x.png > /dev/null
+	@sips -z 1024 1024 $(ICONSET)/icon_512x512.png --out $(ICONSET)/icon_512x512@2x.png > /dev/null
 	@iconutil -c icns $< 1>&2 > /dev/null
 
 -include $(DEPS)

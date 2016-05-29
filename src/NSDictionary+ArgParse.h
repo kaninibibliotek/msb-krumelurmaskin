@@ -24,41 +24,55 @@
 /*                                                                                          */
 /********************************************************************************************/
 
-#import <Cocoa/Cocoa.h>
-#import <WebKit/WebKit.h>
-#import <Quartz/Quartz.h>
-#import <WebKit/WebKit.h>
+#ifndef ArgParse_H_
+#define ArgParse_H_
 
-#import "VideoView.h"
-#import "PreView.h"
-#import "PTPCamera.h"
-#import "Controls.h"
-
-#define app_ ((Application*)[NSApplication sharedApplication].delegate)
-  
-@interface Application : NSObject <NSApplicationDelegate, NSWindowDelegate, PreViewDelegate, PTPCameraDelegate, ControlDelegate, WebUIDelegate, WebFrameLoadDelegate, WebResourceLoadDelegate> {
-  NSWindow            *window;
-  WebView             *main;
-  PreView             *preview;
-  PTPCamera           *camera;
-  QCView              *intro;
-  NSView              *view;
-  NSTimer             *timer;
-  NSImageView         *imageview;
-  Controls            *controls;
-  unsigned int        status;
-  double              stime;
-  NSURL               *cachesURL;
-  NSURL               *storageURL;
-}
-
-@property (nonatomic, retain) NSWindow            *window;
-@property (nonatomic, retain) WebView             *main;
-@property (nonatomic, retain) PreView             *preview;
-@property (nonatomic, retain) PTPCamera           *camera;
-@property (nonatomic, retain) NSImageView         *imageview;
-@property (nonatomic, retain) Controls            *controls;
-@property (nonatomic, readonly) NSURL             *cachesURL;
-@property (nonatomic, readonly) NSURL             *storageURL;
-
+@interface NSDictionary (ArgParse)
++(NSDictionary*)dictionaryFromArgs:(char**)argv count:(int)argc;
+-(BOOL)requireKeys:(NSArray*)keys andArgumentCount:(int)cnt;
+-(NSDictionary*)update:(NSDictionary*)dict;
 @end
+
+@implementation NSDictionary (ArgParse)
++(NSDictionary*)dictionaryFromArgs:(char**)argv count:(int)argc {
+  int i=1;
+  NSMutableArray* p = [NSMutableArray arrayWithCapacity:0];
+  NSMutableDictionary* d = [NSMutableDictionary dictionaryWithCapacity:0];
+  while(i < argc) {
+    NSString* arg = [NSString stringWithCString:argv[i] encoding:NSUTF8StringEncoding];
+    if (![arg hasPrefix:@"-"]) {
+      [p addObject:arg];
+      i++; continue ;
+    }
+    if (argc-i < 2) {
+      [d setObject:@"true" forKey:[arg substringFromIndex:1]];
+      i++; continue ;
+    }
+    NSString* val = [NSString stringWithCString:argv[i+1] encoding:NSUTF8StringEncoding];
+    if ([val hasPrefix:@"-"]) {
+      [d setObject:@"true" forKey:[arg substringFromIndex:1]];
+      i++; continue ;
+    }
+    [d setObject:val forKey:[arg substringFromIndex:1]];
+    i+=2;
+  }
+  [d setObject:[NSNumber numberWithInt:[p count]] forKey:@"count"];
+  [d setObject:(NSArray*)p forKey:@"arguments"];
+  return d;
+}
+-(BOOL)requireKeys:(NSArray*)keys andArgumentCount:(int)cnt {
+  for (NSString *key in keys)
+    if ([self objectForKey:key] == nil) return NO;
+  if ([[self objectForKey:@"count"] intValue] < cnt) return NO;
+  return YES;
+}
+-(NSDictionary*)update:(NSDictionary*)dict {
+  NSMutableDictionary* d = [dict mutableCopy];
+  id val;
+  for (NSString *key in [d allKeys])
+    if ((val = [self objectForKey:key]))
+      [d setObject:val forKey:key];
+  return d;
+}
+@end
+#endif

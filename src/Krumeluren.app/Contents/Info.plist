@@ -81,6 +81,9 @@
             <string>3</string>
             <key>min-size</key>
             <string>24</string>
+            <!-- method -->
+            <key>polymode</key>
+            <true/>
 
           </dict>
         </dict>
