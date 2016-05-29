@@ -47,13 +47,11 @@
 
 -(CIImage*)filteredImage:(CIImage*)input;
 
--(CIImage*)apply:(CIImage*)input;
+-(NSArray*)apply:(CIImage*)input;
 
 -(CIImage*)loadImage:(NSURL*)fileURL;
 
 -(BOOL)writeImage:(CIImage*)image toFile:(NSURL*)fileURL error:(NSError**)err;
-
--(void)applyToPath:(NSString*)inputPath error:(NSError**)error;
 
 -(BOOL)compareDetect:(CIImage*)image;
 

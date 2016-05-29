@@ -54,26 +54,40 @@ contour_get_size(CvSeq *seq, CvRect *size) {
 }
 
 CvSeq*
-contour_filter(CvSeq *seqin, CvMemStorage *mem, int min_size) {
-  CvSeq *seqout, *filtered, *ptr;
+contour_filter_size(CvSeq *seqin, int min_size) {
+  CvSeq *ptr,*tmp=0, *new=0;
+  CvRect r;
+
+  for (ptr=seqin ; ptr ; ptr = ptr->h_next) {
+    contour_get_size(ptr, &r);
+    if (min_size>0 && (r.width <= min_size || r.height <= min_size))
+      continue ;
+    if (!new) {
+      tmp = new = ptr;
+      continue ;
+    }
+    tmp->h_next = ptr;
+    ptr->h_prev = tmp;
+    tmp = ptr;
+  }
+  tmp->h_next=0;
+  return new;
+}
+
+CvSeq*
+contour_flatten(CvSeq *seqin, CvMemStorage *mem) {
+  CvSeq *flat, *ptr;
   CvMemStorage *tmp;
   CvRect r;
   int i;
   
-  tmp = cvCreateMemStorage(0);  
-  filtered = cvCreateSeq(CV_32SC2, sizeof(CvContour), sizeof(CvPoint), tmp);
-
+  flat = cvCreateSeq(CV_32SC2, sizeof(CvContour), sizeof(CvPoint), mem);
   for (ptr=seqin ; ptr ; ptr=ptr->h_next) {
-    contour_get_size(ptr, &r);
-    if (min_size>0 && (r.width <= min_size || r.height <= min_size))
-      continue ;
     for (i=0 ; i < ptr->total ; i++) {
-      cvSeqPush(filtered, (CvPoint*)cvGetSeqElem(ptr, i));
+      cvSeqPush(flat, (CvPoint*)cvGetSeqElem(ptr, i));
     }
   }
-  seqout = cvConvexHull2(filtered, mem, CV_CLOCKWISE, 1);
-  cvReleaseMemStorage(&tmp);
-  return seqout;
+  return flat;
 }
 
 CGImageRef
@@ -330,19 +344,18 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   return input;
 }
 
--(CIImage*)apply:(CIImage*)image {
+-(NSArray*)apply:(CIImage*)image {
 
-  CvMemStorage *mem = NULL, *mem2 = NULL;    
-  IplImage     *src = NULL, *mask=NULL, *tmp=NULL, *img_r=NULL, *img_g=NULL, *img_b=NULL;
-  CvSeq        *seq = NULL, *itr = NULL;
-  CvMat        *mat = NULL;
-  CvSize       size;
-  CGColorRef   greycolor;
-  CvScalar     extcolor;
-  CvRect       rect;
-  CIImage      *input, *output;
-  CGRect       cr;
-  NSArray      *outarr;
+  CvMemStorage   *mem = NULL;
+  IplImage       *src = NULL, *mask=NULL, *tmp=NULL, *img_r=NULL, *img_g=NULL, *img_b=NULL;
+  CvSeq          *seq = NULL, *itr = NULL;
+  CvMat          *mat = NULL;
+  CvSize         size;
+  CGColorRef     greycolor;
+  CvScalar       extcolor;
+  CvRect         rect;
+  CIImage        *outimg;
+  NSMutableArray *outarr = [NSMutableArray arrayWithCapacity:0];
   
   int minx=INT_MAX, miny=INT_MAX, maxx=0, maxy=0;
 
@@ -350,6 +363,7 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   NSNumber *canny_size      = [self integerForKey:@"canny-size" orDefault:3];
   NSNumber *min_size        = [self integerForKey:@"min-size" orDefault:32];
   NSNumber *blur_size       = [self integerForKey:@"gaussian-size" orDefault:3];
+  NSNumber *polymode        = [self boolForKey:@"polymode" orDefault:NO];
   
   if (!image)
     return nil;
@@ -367,7 +381,6 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   mat = cvCreateMat(size.height, size.width, CV_8U);
   
   mem = cvCreateMemStorage(0);
-  mem2 = cvCreateMemStorage(0);
   
   cvCvtColor(src, mask, CV_RGB2GRAY);
 
@@ -383,7 +396,9 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
 
   cvSet(tmp, CV_RGB(0, 0, 0), 0);
 
-  for (itr=seq; itr != 0; itr = itr->h_next)    
+  seq = contour_filter_size(seq, [min_size intValue]);
+      
+  for (itr=seq ; itr ; itr = itr->h_next)    
     cvDrawContours(tmp, itr, extcolor, CV_RGB(0,0,0), -1, CV_FILLED, CV_AA, cvPoint(0,0));
 
   cvSplit(tmp, NULL, NULL, mask, NULL);
@@ -403,34 +418,21 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   cvReleaseImage(&img_b);
   cvReleaseImage(&mask);
 
-  output = CIImageCreateWithIplImage(src, kCIFormatARGB8);
+  outimg = CIImageCreateWithIplImage(src, kCIFormatARGB8);
 
   cvReleaseImage(&src);
   cvReleaseMat(&mat);
 
-  seq = contour_filter(seq, mem2, [min_size intValue]);
-  
-  contour_get_size(seq, &rect);
-
+  if ([polymode boolValue]) {
+    for (itr=seq ; itr ; itr = itr->h_next) {
+      [outarr addObject:[self cropImage:outimg byContour:itr]];
+    }
+  } else {
+    seq = contour_flatten(seq, mem);
+    [outarr addObject:[self cropImage:outimg byContour:seq]];
+  }
   cvReleaseMemStorage(&mem);
-  cvReleaseMemStorage(&mem2);
-
-  NSLog(@"Crop [%d, %d, %d, %d]\n", rect.x, rect.y, rect.width, rect.height);
-
-  cr.origin.x    = rect.x;
-  cr.origin.y    = size.height - (rect.y+rect.height);
-  cr.size.width  = rect.width;
-  cr.size.height = rect.height;
-  
-  input = [output imageByCroppingToRect:cr];
-  
-  CIFilter* transform = [CIFilter filterWithName:@"CIAffineTransform"];
-  NSAffineTransform* affineTransform = [NSAffineTransform transform];
-  [affineTransform translateXBy:-cr.origin.x yBy:-cr.origin.y];
-  [transform setValue:affineTransform forKey:@"inputTransform"];
-  [transform setValue:input forKey:@"inputImage"];
-  return [transform valueForKey:@"outputImage"];
-
+  return outarr;
 }
 
 -(CIImage*)loadImage:(NSURL*)fileURL {
@@ -481,56 +483,6 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
   CGImageRelease(output);
   CFRelease(exporter);
   return YES;
-}
-
--(void)applyToPath:(NSString*)inputPath error:(NSError**)error {
-
-  NSFileManager *fm=[NSFileManager defaultManager];
-  NSString *outputPath = [NSString stringWithFormat:@"%@_cropped.%@",
-                               [inputPath stringByDeletingPathExtension],
-                               [inputPath pathExtension]];
-  NSLog(@"Applying filter to %@", outputPath);
-
-  if (![fm fileExistsAtPath:inputPath]) {
-    if (error) *error = ERROR(22, "Input path does not exist");
-    return ;
-  }
-  
-  if ([fm fileExistsAtPath:outputPath]) {
-    NSLog(@"Removing old %@", outputPath);
-    if(![fm removeItemAtPath:outputPath error:error])
-      return ;
-  }
-
-  CIImage *outputImage,*inputImage = nil;
-  
-  if (!(inputImage = [self loadImage:[NSURL fileURLWithPath:inputPath isDirectory:NO]])) {
-    NSLog(@"Load image failed");
-    if (error) *error = ERROR(23, "Could not read inputFile");
-    return ;
-  }
-  
-  if (!(outputImage = [self apply:inputImage])) {
-    NSLog(@"Apply image failed");
-    if (error) *error = ERROR(24, "Apply failed");
-    return;
-  }
-  
-  if (![self writeImage:outputImage toFile:[NSURL fileURLWithPath:outputPath isDirectory:NO] error:error]) {
-    NSLog(@"Write image failed");
-    return ;
-  }
-
-  if (![fm removeItemAtPath:inputPath error:error]) {
-    NSLog(@"Remove input failed");
-    return ;
-  }
-
-  if (![fm moveItemAtPath:outputPath toPath:inputPath error:error]) {
-    NSLog(@"Move output file failed");
-    return ;
-  }
-  
 }
 
 -(BOOL)compareDetect:(CIImage*)image {
@@ -595,15 +547,16 @@ CIImageCreateWithIplImage(IplImage *ipl, CIFormat format_) {
 }
 
 -(CIImage*)cropImage:(CIImage*)image byContour:(CvSeq*)seq {
-  CvMemStorage *mem = cvCreateMemStorage(0);
+  CvMemStorage *mem      = cvCreateMemStorage(0);
   NSNumber     *min_size = [self integerForKey:@"min-size" orDefault:32];
   CvRect       rect;
   CGRect       cr;
   CIImage      *input;
+  CvSeq        *hull;
+
+  hull = cvConvexHull2(seq, mem, CV_CLOCKWISE, 1);
   
-  seq = contour_filter(seq, mem, [min_size intValue]);
-  
-  contour_get_size(seq, &rect);
+  contour_get_size(hull, &rect);
 
   cvReleaseMemStorage(&mem);
 
@@ -669,70 +622,95 @@ int main(int argc, char **argv) {
   
   NSError        *err=nil;
   NSDictionary   *bundle,*settings,*arguments;
-  NSString       *tpath;
+  NSString       *tp,*ta,*tn;
   NSFileManager  *fm;
   ImageProcessor *ip;
+  NSArray        *oa;
   CIImage        *ii,*oi;
-  NSURL*         *fi,*fo;
+  NSURL          *fi,*fo;
+  int            i;
+  BOOL           wait=NO;
   
   NSLog(@"ImageProcessor standalone test\n");
 
   @autoreleasepool {
     arguments = [NSDictionary dictionaryFromArgs:argv count:argc];
-    if (![arguments requireKeys:@[@"i"] andArgumentCount:1]) {
-      NSLog(@"Usage imgprc -i <input path> <output path>");
+    if (![arguments requireKeys:@[@"o"] andArgumentCount:1]) {
+      NSLog(@"Usage imgprc -o <output directory path> <input image path>");
       return 1;
     }
-    
-    tpath  = [NSString stringWithCString:getwd(0) encoding:NSUTF8StringEncoding];
-    tpath  = [tpath stringByAppendingString:@"/Krumeluren.app/Contents/Info.plist"];
-    bundle = [NSDictionary dictionaryWithContentsOfFile:tpath];
-    tpath  = nil;
+
+    wait = ([arguments objectForKey:@"wait"] != nil);
+
+    tp  = [NSString stringWithCString:getwd(0) encoding:NSUTF8StringEncoding];
+    tp  = [tp stringByAppendingString:@"/Krumeluren.app/Contents/Info.plist"];
+    bundle = [NSDictionary dictionaryWithContentsOfFile:tp];
 
     if (bundle && (bundle = [bundle objectForKey:@"Calibration"]))
       settings = [bundle objectForKey:@"Process"];
 
     settings = [arguments update:settings];
+
+    if (wait) {
+      NSLog(@"Press any key to start");
+      getchar();
+    }
+    
     NSLog(@"settings {");
     for (NSString *key in [settings allKeys])
       NSLog(@" %@: %@", key, [settings objectForKey:key]);
     NSLog(@"}");
     
-    ImageProcessor *ip = [ImageProcessor processorWithSettings:settings];
-
-    do {
-
-      NSURL *fi = [NSURL fileURLWithPath:[arguments objectForKey:@"i"] isDirectory:NO];
+    ip = [ImageProcessor processorWithSettings:settings];
+    
+    for(NSString* ipath in [arguments objectForKey:@"arguments"]) {
+      
+      fi = [NSURL fileURLWithPath:ipath isDirectory:NO];
       
       if (!(ii = [ip loadImage:fi])) {
-        NSLog(@"Could not read input");
+        NSLog(@"Could not read input: %@", ipath);
         break ;
       }
-
       NSLog(@"Apply <= %@", fi.path);
-
-      if (!(oi = [ip apply:ii])) {
+      if (!(oa = [ip apply:ii])) {
         NSLog(@"Apply failed for input image");
         break ;
       }
-      
-      NSURL *fo = [NSURL fileURLWithPath:[[arguments objectForKey:@"arguments"] objectAtIndex:0] isDirectory:NO];
 
-      NSLog(@"Writing => %@", fo.path);
-      
-      if (![ip writeImage:oi toFile:fo error:&err]) {
-        NSLog(@"Unable to write file: %@", [err localizedDescription]);
-        break ;
+      for(i=0 ; i < [oa count] ; i++) {
+        ta = [ipath lastPathComponent];
+        tn = [NSString stringWithFormat:@"%@_%02d.png",
+                       [ta stringByDeletingPathExtension], i];
+        tp = [[arguments objectForKey:@"o"] stringByAppendingPathComponent:tn];
+        fo = [NSURL fileURLWithPath:tp isDirectory:NO];
+        oi = [oa objectAtIndex:i];
+        NSLog(@"Writing => %@", fo.path);
+        if (![ip writeImage:oi toFile:fo error:&err]) {
+          NSLog(@"Unable to write file: %@", [err localizedDescription]);
+          break ;
+        }
       }
-
-      NSLog(@"Completed");
-      
-    } while (NO);
+      if (err) break;
+    }
     
     if (err)
       NSLog(@"Could not apply: %@", [err localizedDescription]);
+
+    if (wait) {
+      NSLog(@"Press any key to release pool");
+      getchar();
+    }
+
+    NSLog(@"Releaseing pool");
   }
-    
+
+  NSLog(@"Continue");
+
+  if (wait) {
+    NSLog(@"Press any key to exit");
+    getchar();
+  }
+  
   return 0;
 }
 #endif
